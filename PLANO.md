@@ -24,11 +24,12 @@ cliente ou contato.
 
 ```
 ARIADNE_DIR/
-  configs.json            equipe: membros, fuso, modelo, janelas padrão
+  configs.json            o que é da equipe toda: assistente, fuso, modelo, janelas padrão
   credenciais/            telegram_token, anthropic_key, google_* (da conta que organiza), 0600
   dados/estado.json       estado da equipe: tarefas, recados agendados, viagens
   dados/viagens/<id>/     comprovantes
-  membros/<slug>/         chat_id (0600), convite, histórico do modelo, conversa.jsonl
+  membros/<slug>/         membro.json ({nome, email}), chat_id (0600), convite (0600), histórico do
+                          modelo, conversa.jsonl
 ```
 
 - **Roteador:** o Telegram só deixa um processo fazer o `getUpdates` de um bot (um segundo leva
@@ -39,7 +40,9 @@ ARIADNE_DIR/
   do membro) e o próprio `Claude`.
 - **Estado da equipe:** `Arc<Mutex<Equipe>>`. O lock vale só pra ler, mudar e salvar (tmp + rename),
   nunca durante uma chamada ao modelo.
-- **Pareamento por link:** `ariadne --membro "Nome"` cria `membros/<slug>/` e imprime
+- **Membros fora do `configs.json`:** quem é da equipe é quem tem `membros/<slug>/membro.json`. O
+  `--membro` cria sem ninguém editar JSON, e entrar gente nova não pede reinício.
+- **Pareamento por link:** `ariadne --membro "Nome" [--email x]` cria `membros/<slug>/` e imprime
   `t.me/<bot>?start=<código>`. O membro só toca no link: o Telegram manda `/start <código>`, o
   roteador acha o convite (relê `membros/` quando chega um `/start` desconhecido), grava o `chat_id` e
   apaga o convite. O convite vale 7 dias. Chat desconhecido sem código é ignorado e vai pro log.
