@@ -16,11 +16,11 @@ Usa o [Argos](https://github.com/Robin-Ud/argos) como biblioteca. O plano comple
 
 ```bash
 cargo build --release
-mkdir -p ~/ariadne/credenciais && cd ~/ariadne
+mkdir -p ~/deving/ariadne-dados/credenciais && cd ~/deving/ariadne-dados   # fora do repo: o token nunca vai pro git
 echo '{}' > configs.json                      # tudo tem padrão (ver abaixo)
 install -m 600 /dev/null credenciais/telegram_token
 $EDITOR credenciais/telegram_token            # o token que o BotFather deu
-export ARIADNE_DIR=~/ariadne                  # sem ela, a pasta atual
+export ARIADNE_DIR=~/deving/ariadne-dados    # sem ela, a pasta atual
 ariadne --membro "Fulana" --email fulana@exemplo.com
 ariadne --checar-config                       # config, token (getMe) e membros; antes de todo restart
 ariadne                                       # roda (systemd na VM)
