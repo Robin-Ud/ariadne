@@ -1,0 +1,157 @@
+# Ariadne: plano
+
+Bot de Telegram de **uma equipe pequena** (ex.: 3 sócios de uma consultoria): cada um conversa com ela
+no privado, e ela leva lembretes, recados e tarefas de um pro outro, marca reunião e cuida das
+viagens a trabalho. É um bot só pra equipe toda: ninguém precisa criar bot no BotFather nem fazer
+login no Google pra entrar.
+
+Usa o [Argos](https://github.com/Robin-Ud/argos) como biblioteca (Telegram, Claude, Google, util e as
+regras de tempo das tarefas), sem copiar código. O que é de uma equipe específica (nomes, configs,
+deploy) fica num complemento privado, como o `argos-boi` faz pro Argos.
+
+## Persona
+
+Uma secretária da equipe, com nome de gente mas não banal: incomum o bastante pra não confundir com
+cliente ou contato.
+
+- Curta. Chama cada um pelo nome e diz o que fez ("Mandei pro Fulano, ele já recebeu").
+- **É uma pessoa só pra equipe toda**, mesmo atendendo cada um no privado: sabe o que o outro pediu
+  e lembra quem está esperando o quê.
+- Lembra e avisa quando algo está parado, mas não decide prioridade por ninguém.
+- `assistente` = "a Ariadne" (o nome muda pelo `configs.json`, como no Argos).
+
+## Arquitetura
+
+```
+ARIADNE_DIR/
+  configs.json            equipe: membros, fuso, modelo, janelas padrão
+  credenciais/            telegram_token, anthropic_key, google_* (da conta que organiza), 0600
+  dados/estado.json       estado da equipe: tarefas, recados agendados, viagens
+  dados/viagens/<id>/     comprovantes
+  membros/<slug>/         chat_id (0600), convite, histórico do modelo, conversa.jsonl
+```
+
+- **Roteador:** o Telegram só deixa um processo fazer o `getUpdates` de um bot (um segundo leva
+  409). Uma thread puxa os updates e entrega cada um, pelo `from.id`, pra thread do membro (`mpsc`).
+- **Uma thread por membro:** o laço é o mesmo do `Bot::run` do Argos (`recv_timeout` no lugar do
+  `getUpdates`: chegou update → `handle`; deu o tempo → `tick` daquele membro). Assim o Haiku lento
+  de um não trava os outros. Cada thread tem o próprio `Telegram` (o mesmo token, `conversa` na pasta
+  do membro) e o próprio `Claude`.
+- **Estado da equipe:** `Arc<Mutex<Equipe>>`. O lock vale só pra ler, mudar e salvar (tmp + rename),
+  nunca durante uma chamada ao modelo.
+- **Pareamento por link:** `ariadne --membro "Nome"` cria `membros/<slug>/` e imprime
+  `t.me/<bot>?start=<código>`. O membro só toca no link: o Telegram manda `/start <código>`, o
+  roteador acha o convite (relê `membros/` quando chega um `/start` desconhecido), grava o `chat_id` e
+  apaga o convite. O convite vale 7 dias. Chat desconhecido sem código é ignorado e vai pro log.
+- **Menu do "/" por membro:** `setMyCommands` com `scope: {type: chat}`.
+- **Dependência:** `argos = { path = "../argos" }` enquanto nada for público. Na hora de publicar,
+  passa pra `git` com `rev` fixo, e o `path` local volta por um `[patch]` em
+  `~/deving/.cargo/config.toml` (o cargo lê o config das pastas acima; fica fora dos dois repos).
+  O `CHRONO_TZ_TIMEZONE_FILTER` do Argos vem junto no `.cargo/config.toml` daqui.
+
+## Dados
+
+```
+Tarefa {
+  id, texto,
+  de: slug, para: Option<slug>,      // None = "alguém precisa…" (🙋 eu pego); de == para = lembrete pessoal
+  criada, prazo: Option<iso>,
+  status: aberta | feita | recusada | cancelada, feita_em, motivo,
+  sem_resposta, cobrar_em, janelas, pausada_ate,   // as regras de tempo do argos::tarefas
+  resto                                            // #[serde(flatten)], como no Argos
+}
+Recado { id, de, para: Vec<slug>, texto, quando: Option<iso> }   // sem quando = sai na hora, não fica no estado
+```
+
+**Visibilidade:** quem pediu e quem recebeu veem a tarefa. O lembrete pessoal (`de == para`) só o
+dono vê. "Tarefas da equipe" mostra tudo, menos os lembretes pessoais.
+
+## Ferramentas do modelo
+
+| Ferramenta | O quê |
+|---|---|
+| `delegar` | `para` (enum com os membros + `eu` + `alguem`), `texto`, `prazo`, janelas |
+| `recado` | `para` (array, ou `todos`), `texto`, `quando` |
+| `ver_tarefas` | `filtro`: `minhas` / `pedi` / `equipe` / `de:<membro>` |
+| `concluir`, `adiar`, `recusar` | recusar leva `motivo`; os três avisam quem pediu |
+| `marcar_reuniao` | título, início, duração, `quem`, local/link → convite ou link |
+| `livres_juntos` | `quem`, dias, duração → `argos::agenda::horarios_livres` sobre o freeBusy |
+| `viagem_*`, `registrar_gasto` | ver Viagem |
+
+Regras de custo do Argos valem: o que é determinístico vai pra atalho sem modelo, e nada que muda a
+cada mensagem entra no `system` (cache).
+
+## Recados, tarefas e o aviso de volta
+
+- A tarefa entregue ao membro tem ✅ / 🕒 / ❌ (recusar pergunta o motivo).
+- **Aviso de volta:** concluiu → "✅ Fulano concluiu X" pra quem pediu. Recusou → o mesmo, com o
+  motivo.
+- **Cobrança espaçada:** é a do Argos (`tarefas::espera`, janelas, pausa). Depois de `escalar_apos`
+  (3) cobranças sem resposta, avisa **quem pediu**, uma vez só ("Fulano não respondeu 3 cobranças de
+  X"), e a cobrança segue espaçada até o máximo.
+- **Responder recado:** responder (reply do Telegram) a um recado entregue manda a resposta pra quem
+  mandou (mapa `message_id` → recado, curto e podado).
+
+## Agenda
+
+Por ordem de custo:
+
+1. **Link "📅 Salvar na agenda":** botão de URL com
+   `calendar.google.com/calendar/render?action=TEMPLATE&text=…&dates=…&ctz=…&details=…&location=…`.
+   Não precisa de login nenhum. Também manda um `.ics` como documento, pra quem usa Apple ou Outlook.
+2. **Convite:** o evento é criado na agenda da conta que organiza, com os membros em `attendees` e
+   `sendUpdates=all`. Cada um aceita pelo próprio Google. Quem não tem e-mail no `configs.json`
+   recebe o link. Sugestão: uma conta Google só da Ariadne, assim o convite chega "de Ariadne".
+3. **Livres juntos:** `POST /freeBusy` com os e-mails. Cada membro só precisa compartilhar o
+   "ver livre/ocupado" com a conta da Ariadne (no Workspace isso costuma vir por padrão). Os
+   intervalos ocupados viram eventos pro `horarios_livres` do Argos.
+
+No Argos, falta no `gcal`: `create` com `sendUpdates` e um `free_busy`.
+
+## Viagem (vem do Argos)
+
+O `viagens.rs` do Argos (2026-11-08: abrir, gastos por texto, foto e PDF, relatório em CSV + zip,
+carro com km) muda pra cá. Ele **fica no Argos até a Ariadne fazer o mesmo**, e depois um commit
+tira de lá. As peças genéricas que ele trouxe continuam na biblioteca: `util::zip_gravar`,
+`rede::ler_documento`, `Telegram::send_document`, multipart.
+
+Mudanças na ideia:
+
+- **Cliente fica só na viagem** (viagem → clientes visitados; gasto → cliente opcional). Tarefa e
+  recado não têm cliente.
+- **Reembolso deixa de ser o centro.** A viagem é: destino, datas, **quem vai** (membros),
+  documentos (passagem, reserva) e gastos com **quem pagou**. O relatório tem visões: por pessoa
+  (quem pagou o quê, o acerto entre membros), por cliente (o antigo reembolso, `faturado` fora) e por
+  categoria.
+- PDF de passagem → além do gasto, oferece o voo como evento na agenda (link ou convite pra quem vai).
+- **Sai:** o abastecimento que vira gasto pelo rascunho do Argos e o carro alugado como veículo
+  temporário no `motor_dir`. Isso é coisa de veículo do Argos. Na Ariadne, combustível é um gasto
+  (foto da nota) e carro é só `km_inicial`/`km_final` + `valor_km` opcional.
+
+## Ponte com o Argos pessoal (depois)
+
+`membros[].argos_dir` opcional: a Ariadne põe na caixa de recados do Argos pessoal do membro (o
+mesmo `argos::recados::Recado`), e o Argos ganha um destino "equipe" que escreve na caixa da Ariadne.
+Funciona só na mesma máquina, como hoje.
+
+## Fases
+
+Cada fase fecha com testes (servidor falso de Telegram/Google, como no Argos; nada de API paga) e
+dá pra usar sozinha.
+
+0. **Esqueleto:** crate, `configs.json`, roteador + threads, `--membro` + link, `/ping`, menu por
+   chat, `--checar-config`, `--selftest` (RSS com 3 membros).
+1. **Recados e tarefas:** `delegar`, `recado`, `ver_tarefas`, ✅/🕒/❌, aviso de volta, cobrança
+   espaçada, escalar pra quem pediu, responder recado.
+2. **Agenda:** link + `.ics`, convite, livres juntos.
+3. **Viagem:** o port, já com as mudanças acima. Depois sai do Argos.
+4. **Equipe:** encaminhamentos de reunião (texto → tarefas pra cada um, com ✅ antes de gravar),
+   🙋 eu pego, fechamento da semana.
+5. Ponte com o Argos pessoal.
+
+## Em aberto
+
+- Conta Google: uma da Ariadne (recomendado) ou a de um membro?
+- Username do bot (o `@…Bot` tem que ser único), fica no complemento.
+- Chave da Anthropic: uma pra equipe (padrão); o `log_uso` separa por membro.
+- Viagem de quem não está na equipe (cliente que vai junto)? Por ora só membros.

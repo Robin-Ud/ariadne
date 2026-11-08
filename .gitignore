@@ -1,0 +1,8 @@
+target/
+dados/
+membros/
+configs.json
+equipe.json
+credenciais/
+.claude/
+CLAUDE.local.md
