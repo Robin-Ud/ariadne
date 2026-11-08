@@ -1,6 +1,6 @@
 use argos::rede::{agente, Telegram};
 use argos::util::R;
-use ariadne::{config, membros};
+use ariadne::{config, membros, roteador::Roteador};
 use serde_json::{json, Value};
 use std::path::Path;
 
@@ -42,8 +42,16 @@ fn cli_membro(nome: &str, email: Option<&str>) -> R<()> {
     Ok(())
 }
 
+/// ariadne (sem argumento): roteador + um atendente por membro
+fn cli_rodar() -> R<()> {
+    let dir = config::data_dir();
+    let c = load(&dir)?;
+    let tg = Telegram::new(agente(), &c.credencial("telegram_token")?);
+    Roteador::new(dir, c, tg)?.run()
+}
+
 fn uso() -> ! {
-    eprintln!("uso: ariadne --membro \"Nome\" [--email x]");
+    eprintln!("uso: ariadne                               roda\n      ariadne --membro \"Nome\" [--email x]     cadastra e imprime o link do convite");
     std::process::exit(2);
 }
 
@@ -51,6 +59,7 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let a: Vec<&str> = args.iter().map(String::as_str).collect();
     let r: R<()> = match a.as_slice() {
+        [] => cli_rodar(),
         ["--membro", nome] => cli_membro(nome, None),
         ["--membro", nome, "--email", e] => cli_membro(nome, Some(e)),
         _ => uso(),

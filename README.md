@@ -22,12 +22,28 @@ install -m 600 /dev/null credenciais/telegram_token
 $EDITOR credenciais/telegram_token            # o token que o BotFather deu
 export ARIADNE_DIR=~/ariadne                  # sem ela, a pasta atual
 ariadne --membro "Fulana" --email fulana@exemplo.com
+ariadne                                       # roda (systemd na VM)
 ```
 
 O `--membro` imprime um link `https://t.me/<bot>?start=<código>` pra mandar pra pessoa. Ela toca, o
 Telegram abre o bot, ela toca em **Começar** e pronto. O link vale 7 dias e uma vez só. Rodar o
 `--membro` de novo pro mesmo nome gera outro link (celular novo, por exemplo). Pode cadastrar com o
 bot rodando.
+
+## Comandos
+
+Cada membro tem o próprio menu do "/":
+
+- `/ping`: ela responde se está no ar.
+- `/equipe`: quem está na equipe. ✅ pareado, ⏳ convite mandado, ➖ sem convite.
+- `/ajuda`: o que ela faz.
+
+## Como funciona
+
+Um processo só faz o `getUpdates`, porque o Telegram não deixa dois processos lerem o mesmo bot. Ele
+entrega cada update, pelo chat, pra thread daquele membro, e cada membro tem a sua. Chat que não é
+de ninguém só entra com o `/start <código>` do link; o resto é ignorado e vai pro log. Grupo é
+sempre ignorado.
 
 ## `configs.json`
 
@@ -45,6 +61,7 @@ credenciais/telegram_token          0600
 membros/<slug>/membro.json          {nome, email}
 membros/<slug>/convite              0600, até a pessoa tocar no link
 membros/<slug>/chat_id              0600, depois
+membros/<slug>/conversa.jsonl       conversa recente (24 h)
 ```
 
 ## Licença
