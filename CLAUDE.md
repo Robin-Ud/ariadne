@@ -3,6 +3,20 @@
 Ariadne: bot de Telegram de uma equipe pequena (lembretes, recados e tarefas entre membros, agenda,
 viagem a trabalho), em Rust, usando o `../argos` como biblioteca. Ainda no plano: ver `PLANO.md`.
 
+## Rodar
+
+```bash
+cargo test                     # tudo contra o Telegram falso (src/falso.rs), sem rede
+cargo run -- --selftest        # 3 membros, 600 mensagens, VmHWM
+cargo run -- --checar-config   # com ARIADNE_DIR: config, token (getMe) e membros
+```
+
+Mapa: `config.rs` (configs.json), `membros.rs` (membro.json, convite, pareamento), `roteador.rs` (o
+único `getUpdates`, `despacha` por chat), `atendente.rs` (thread por membro: `handle`/`tick`, menu
+por chat), `falso.rs` (Telegram falso), `main.rs` (CLI).
+
+## Regras
+
 - **Repo público:** nada de nome, dado ou config de equipe real. Fixtures inventados. O que é de uma
   equipe de verdade vai no complemento privado.
 - Código que serve pro Argos também (Telegram, Google, util, tempo das tarefas) nasce no

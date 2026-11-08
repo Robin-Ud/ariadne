@@ -22,6 +22,7 @@ install -m 600 /dev/null credenciais/telegram_token
 $EDITOR credenciais/telegram_token            # o token que o BotFather deu
 export ARIADNE_DIR=~/ariadne                  # sem ela, a pasta atual
 ariadne --membro "Fulana" --email fulana@exemplo.com
+ariadne --checar-config                       # config, token (getMe) e membros; antes de todo restart
 ariadne                                       # roda (systemd na VM)
 ```
 
@@ -29,6 +30,9 @@ O `--membro` imprime um link `https://t.me/<bot>?start=<código>` pra mandar pra
 Telegram abre o bot, ela toca em **Começar** e pronto. O link vale 7 dias e uma vez só. Rodar o
 `--membro` de novo pro mesmo nome gera outro link (celular novo, por exemplo). Pode cadastrar com o
 bot rodando.
+
+`ariadne --selftest` sobe 3 membros numa pasta temporária contra um Telegram falso local, manda 600
+mensagens e imprime o pico de memória (VmHWM; na fase 0, ~5 MB).
 
 ## Comandos
 
