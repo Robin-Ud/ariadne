@@ -111,9 +111,10 @@ No Argos, falta no `gcal`: `create` com `sendUpdates` e um `free_busy`.
 ## Viagem (vem do Argos)
 
 O `viagens.rs` do Argos (2026-11-08: abrir, gastos por texto, foto e PDF, relatório em CSV + zip,
-carro com km) muda pra cá. Ele **fica no Argos até a Ariadne fazer o mesmo**, e depois um commit
-tira de lá. As peças genéricas que ele trouxe continuam na biblioteca: `util::zip_gravar`,
-`rede::ler_documento`, `Telegram::send_document`, multipart.
+carro com km) muda pra cá. **Sai do Argos já** (o Argos fica bem pessoal). O último commit com ele é
+o `d499ebf` do argos, e o port parte dali: `git -C ../argos show d499ebf:src/viagens.rs`, e o mesmo
+pro `rede.rs` (`com_despesa`, `documento_body`) e pros testes. As peças genéricas continuam na
+biblioteca: `util::zip_gravar`, `Telegram::send_document`, multipart.
 
 Mudanças na ideia:
 
@@ -144,7 +145,7 @@ dá pra usar sozinha.
 1. **Recados e tarefas:** `delegar`, `recado`, `ver_tarefas`, ✅/🕒/❌, aviso de volta, cobrança
    espaçada, escalar pra quem pediu, responder recado.
 2. **Agenda:** link + `.ics`, convite, livres juntos.
-3. **Viagem:** o port, já com as mudanças acima. Depois sai do Argos.
+3. **Viagem:** o port a partir do `d499ebf` do argos, já com as mudanças acima.
 4. **Equipe:** encaminhamentos de reunião (texto → tarefas pra cada um, com ✅ antes de gravar),
    🙋 eu pego, fechamento da semana.
 5. Ponte com o Argos pessoal.
