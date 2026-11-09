@@ -20,9 +20,11 @@ mkdir -p ~/deving/ariadne-dados/credenciais && cd ~/deving/ariadne-dados   # for
 echo '{}' > configs.json                      # tudo tem padrão (ver abaixo)
 install -m 600 /dev/null credenciais/telegram_token
 $EDITOR credenciais/telegram_token            # o token que o BotFather deu
+install -m 600 /dev/null credenciais/anthropic_key
+$EDITOR credenciais/anthropic_key             # a chave da equipe (sem ela, só /ping e /equipe)
 export ARIADNE_DIR=~/deving/ariadne-dados    # sem ela, a pasta atual
 ariadne --membro "Fulana" --email fulana@exemplo.com
-ariadne --checar-config                       # config, token (getMe) e membros; antes de todo restart
+ariadne --checar-config                       # config, token (getMe), chave e membros; antes de todo restart
 ariadne                                       # roda (systemd na VM)
 ```
 
@@ -30,6 +32,11 @@ O `--membro` imprime um link `https://t.me/<bot>?start=<código>` pra mandar pra
 Telegram abre o bot, ela toca em **Começar** e pronto. O link vale 7 dias e uma vez só. Rodar o
 `--membro` de novo pro mesmo nome gera outro link (celular novo, por exemplo). Pode cadastrar com o
 bot rodando.
+
+**Na VM** (Oracle Linux 9): `./build-ol9.sh` compila num container `oraclelinux:9` (compilar no
+Fedora dá um binário que pede glibc nova demais) e deixa o binário em `target/ol9/release/ariadne`.
+Precisa do `../argos` ao lado. Lá, o binário vai pra `/usr/local/bin/` e o serviço é o
+[`exemplos/ariadne.service`](exemplos/ariadne.service), trocando `SEU_USUARIO`.
 
 `ariadne --selftest` sobe 3 membros numa pasta temporária contra um Telegram falso local, manda 600
 mensagens e imprime o pico de memória (VmHWM; na fase 0, ~5 MB).

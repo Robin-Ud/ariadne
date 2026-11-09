@@ -1,0 +1,16 @@
+# /etc/systemd/system/ariadne.service: um por equipe (um bot, um ARIADNE_DIR)
+[Unit]
+Description=Ariadne (secretária da equipe no Telegram)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=SEU_USUARIO
+Environment=ARIADNE_DIR=/home/SEU_USUARIO/ariadne-dados
+WorkingDirectory=/home/SEU_USUARIO/ariadne-dados
+ExecStart=/usr/local/bin/ariadne
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
