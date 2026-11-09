@@ -169,8 +169,12 @@ Decisões tomadas no caminho:
 - O recado agendado sai no `tick` de quem recebe: cada thread só manda agendado pro próprio chat.
 - O link "📅 Salvar na agenda" fica pra fase 2.
 
-Falta pôr no ar: bot no BotFather, `anthropic_key` da equipe, o `build-ol9.sh` e, na VM (sudo é do
-Matheus), usuário, pasta, unit do systemd (`exemplos/ariadne.service`) e os convites gerados lá.
+Falta pôr no ar: a `anthropic_key` da equipe (o bot e o token já existem) e, na VM (sudo é do
+Matheus), usuário, pasta, binário do `build-ol9.sh`, unit do systemd (`exemplos/ariadne.service`) e
+os convites gerados lá.
+
+Cobrança: no máximo uma por dia (`cobrar_a_cada_h` = 24, espaçando até 72 h). Com isso, o escalar
+depois de 3 sem resposta cai uns 5 dias depois do pedido.
 
 Pra decidir: se a viagem é o que o patrão espera, a fase 3 vem antes da 2?
 

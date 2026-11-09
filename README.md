@@ -77,8 +77,9 @@ Pra responder, é só responder (reply) à mensagem do recado: a resposta vai di
 
 Tarefa sem prazo já começa a ser cobrada ("🔔 …", com os botões), uma espera (`cobrar_a_cada_h`)
 depois, dentro da `janela_cobranca`. Com prazo, o "⏰" sai no prazo (só o dia = às 09:00), e a
-cobrança começa dali. Sem resposta, cada cobrança espaça 1,5× a anterior, até 72 h; concluir, adiar
-ou recusar para tudo. São as regras de tempo do Argos.
+cobrança começa dali. Sem resposta, cada cobrança espaça 1,5× a anterior (24 h → 36 h → 54 h → 72
+h), e o intervalo nunca fica abaixo de `cobrar_a_cada_h`: com o padrão, nunca saem duas no mesmo dia.
+Concluir, adiar ou recusar para tudo. São as regras de tempo do Argos.
 
 Depois de `escalar_apos` cobranças sem resposta, quem pediu recebe "⚠️ Fulano não respondeu 3
 cobranças de …", uma vez só. A cobrança continua.
@@ -99,7 +100,7 @@ sempre ignorado.
 | `cred_dir` | `"credenciais"` | relativo = a partir da pasta da Ariadne |
 | `modelo` | `"claude-haiku-5-5"` | o modelo da conversa |
 | `esforco` | `"medium"` | o esforço do modelo |
-| `cobrar_a_cada_h` | `3` | horas entre cobranças; sem resposta, espaça 1,5× até 72 h |
+| `cobrar_a_cada_h` | `24` | horas entre cobranças (24 = no máximo uma por dia); sem resposta, espaça 1,5× até 72 h |
 | `janela_cobranca` | `["08:00", "20:00"]` | cobrança só sai entre essas horas |
 | `escalar_apos` | `3` | depois de tantas cobranças sem resposta, avisa quem pediu (uma vez) |
 | `conversa_reset_min` | `30` | a conversa com o modelo recomeça depois de tanto tempo parada |

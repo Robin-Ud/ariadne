@@ -243,7 +243,7 @@ fn config_janela_e_cobranca_validadas() {
         std::fs::write(tmp.0.join("configs.json"), "{}").unwrap();
         config::load_de(&tmp.0).unwrap()
     };
-    assert_eq!((c.modelo.as_str(), c.cobrar_a_cada_h, c.escalar_apos), ("claude-haiku-5-5", 3.0, 3));
+    assert_eq!((c.modelo.as_str(), c.cobrar_a_cada_h, c.escalar_apos), ("claude-haiku-5-5", 24.0, 3));
     assert_eq!(c.janela_cobranca, ("08:00".to_string(), "20:00".to_string()));
     for ruim in [r#"{"janela_cobranca": ["20:00", "08:00"]}"#, r#"{"janela_cobranca": ["8h", "20:00"]}"#, r#"{"cobrar_a_cada_h": 0}"#] {
         std::fs::write(tmp.0.join("configs.json"), ruim).unwrap();
@@ -291,10 +291,10 @@ fn tarefa_sem_prazo_ja_cobra_e_com_prazo_espera_o_dia() {
     let t = estado::nova_tarefa(&mut e, "fulana", "beltrano", "proposta", None, &now, &cfg()).unwrap();
     assert!(t.pendente);
     assert_eq!((t.texto.as_str(), estado::de(&t), estado::para(&t)), ("proposta", "fulana", "beltrano"));
-    assert_eq!(t.cobrar_em.as_deref(), Some("2026-11-09T13:00:00-03:00"), "uma espera (3 h) depois");
-    // 19h + 3h passa da janela (até 20h): a primeira cobrança vai pra manhã seguinte
-    let t = estado::nova_tarefa(&mut e, "fulana", "beltrano", "x", None, &dt("2026-11-09T19:00:00-03:00"), &cfg()).unwrap();
-    assert_eq!(t.cobrar_em.as_deref(), Some("2026-11-10T08:00:00-03:00"));
+    assert_eq!(t.cobrar_em.as_deref(), Some("2026-11-10T10:00:00-03:00"), "uma espera (24 h) depois");
+    // pedida às 21h: 24 h depois passa da janela (até 20h), e a primeira cobrança vai pra manhã seguinte
+    let t = estado::nova_tarefa(&mut e, "fulana", "beltrano", "x", None, &dt("2026-11-09T21:00:00-03:00"), &cfg()).unwrap();
+    assert_eq!(t.cobrar_em.as_deref(), Some("2026-11-11T08:00:00-03:00"));
 
     let prazo = estado::le_quando("2026-11-13").unwrap();
     let t = estado::nova_tarefa(&mut e, "fulana", "fulana", "relatório", Some(prazo), &now, &cfg()).unwrap();
@@ -573,28 +573,32 @@ fn cobra_espacado_na_janela_e_escala_uma_vez() {
     }
     let mut b = atendente_de(&r, "beltrano", 200);
     let cobrar_em = || estado_de(&tmp.0).tarefas[0].cobrar_em.clone().unwrap();
-    assert_eq!(cobrar_em(), "2026-11-09T13:00:00-03:00");
-    b.tick_em(&dt("2026-11-09T12:59:00-03:00")).unwrap();
+    assert_eq!(cobrar_em(), "2026-11-10T10:00:00-03:00");
+    b.tick_em(&dt("2026-11-10T08:59:00-03:00")).unwrap();
     nada(&rx, 200, |_| true);
 
     let mut horas = vec![];
     for n in 1..=4 {
         let quando = cobrar_em();
-        horas.push(quando[5..16].to_string());
+        horas.push(quando.clone());
         b.tick_em(&dt(&quando)).unwrap();
         let c = espera(&rx, enviado_a(200, "🔔 mandar a proposta (pedido de Fulana"));
         assert_eq!(c["reply_markup"]["inline_keyboard"][0][0]["callback_data"], "ok:1");
         if n == 3 {
             espera(&rx, enviado_a(100, "⚠️ <b>Beltrano</b> não respondeu 3 cobranças de: mandar a proposta"));
         }
-        if n == 4 {
-            // o lembrete pessoal vence no prazo (10/11 09h), no meio das cobranças, e só pro dono
+        if n == 1 {
+            // o lembrete pessoal vence no prazo (10/11 09h), no mesmo tick, e só pro dono
             let c = espera(&rx, enviado_a(200, "⏰ pagar o boleto"));
             assert_eq!(c["reply_markup"]["inline_keyboard"][0][2]["callback_data"], "cx:2");
         }
     }
-    // 13h; +4h30 = 17h30; +6h45 cai fora da janela (até 20h) → 08h; e segue espaçando
-    assert_eq!(horas[..3], ["11-09T13:00", "11-09T17:30", "11-10T08:00"]);
+    // 10/11 10h; +36 h cai às 22h, fora da janela (até 20h) → 12/11 08h; +54 h; e o teto de 72 h
+    let curtas: Vec<&str> = horas.iter().map(|h| &h[5..16]).collect();
+    assert_eq!(curtas, ["11-10T10:00", "11-12T08:00", "11-14T14:00", "11-17T14:00"]);
+    for par in horas.windows(2) {
+        assert!(dt(&par[1]) - dt(&par[0]) >= chrono::Duration::hours(24), "duas cobranças no mesmo dia: {par:?}");
+    }
     nada(&rx, 300, |c| c["chat_id"] == 100);
 }
 

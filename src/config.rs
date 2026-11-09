@@ -16,7 +16,7 @@ pub struct Config {
     /// modelo e esforço da conversa
     pub modelo: String,
     pub esforco: String,
-    /// horas entre uma cobrança e a próxima (espaça sozinho quando ninguém responde)
+    /// horas entre uma cobrança e a próxima (espaça sozinho quando ninguém responde). 24 = no máximo uma por dia
     pub cobrar_a_cada_h: f64,
     /// cobrança só sai entre estas horas ("HH:MM")
     pub janela_cobranca: (String, String),
@@ -34,7 +34,7 @@ impl Default for Config {
             cred_dir: "credenciais".into(),
             modelo: "claude-haiku-5-5".into(),
             esforco: "medium".into(),
-            cobrar_a_cada_h: 3.0,
+            cobrar_a_cada_h: 24.0,
             janela_cobranca: ("08:00".into(), "20:00".into()),
             escalar_apos: 3,
             conversa_reset_min: 30.0,
