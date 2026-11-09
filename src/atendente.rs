@@ -2,20 +2,44 @@
 //! Chegou update → `handle`; deu o tempo → `tick`. Um membro esperando o modelo não trava os outros.
 
 use crate::config::Config;
+use crate::estado::{self, Estado};
 use crate::membros::{self, Membro};
 use argos::rascunho::esc;
 use argos::rede::Telegram;
 use argos::util::{corta, R};
 use serde_json::{json, Value};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
-/// o que as threads dividem: quem é da equipe (e, na fase 1, o estado das tarefas e recados)
+/// o que as threads dividem: quem é da equipe e o estado das tarefas e recados
 #[derive(Debug, Default)]
 pub struct Time {
     pub membros: Vec<Membro>,
+    pub estado: Estado,
+    /// a pasta da Ariadne (o estado vai em `dados/estado.json`)
+    pub dir: PathBuf,
+}
+
+impl Time {
+    /// lê o estado; os membros entram pelo `Roteador::recarrega`
+    pub fn carregar(dir: &Path) -> R<Time> {
+        Ok(Time { membros: vec![], estado: estado::carregar(&estado::arquivo(dir))?, dir: dir.to_path_buf() })
+    }
+
+    pub fn gravar(&self) -> R<()> {
+        estado::gravar(&self.estado, &estado::arquivo(&self.dir))
+    }
+
+    pub fn membro(&self, slug: &str) -> Option<&Membro> {
+        self.membros.iter().find(|m| m.slug == slug)
+    }
+
+    /// primeiro nome ("Fulana Souza" → "Fulana"); slug que não é membro volta como veio
+    pub fn primeiro_nome(&self, slug: &str) -> String {
+        self.membro(slug).and_then(|m| m.nome.split_whitespace().next()).unwrap_or(slug).to_string()
+    }
 }
 
 /// a equipe, compartilhada entre as threads. Trava só pra ler ou mudar, nunca durante chamada de rede.
@@ -79,9 +103,7 @@ impl Atendente {
 
     /// primeiro nome deste membro
     fn nome(&self) -> String {
-        let eq = trava(&self.equipe);
-        let n = eq.membros.iter().find(|m| m.slug == self.slug).map(|m| m.nome.clone()).unwrap_or_default();
-        n.split_whitespace().next().unwrap_or(&self.slug).to_string()
+        trava(&self.equipe).primeiro_nome(&self.slug)
     }
 
     fn saudacao(&self) -> String {

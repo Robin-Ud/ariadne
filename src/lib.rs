@@ -2,6 +2,7 @@
 
 pub mod atendente;
 pub mod config;
+pub mod estado;
 pub mod falso;
 pub mod membros;
 pub mod roteador;

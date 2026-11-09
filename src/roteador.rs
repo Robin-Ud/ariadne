@@ -37,7 +37,8 @@ pub fn codigo_do_start(u: &Value) -> Option<&str> {
 impl Roteador {
     /// lê `membros/` e sobe um atendente por membro pareado
     pub fn new(dir: PathBuf, config: Config, tg: Telegram) -> R<Roteador> {
-        let mut r = Roteador { tg, dir, config, equipe: Arc::new(Mutex::new(Time::default())), filas: HashMap::new() };
+        let time = Time::carregar(&dir)?;
+        let mut r = Roteador { tg, dir, config, equipe: Arc::new(Mutex::new(time)), filas: HashMap::new() };
         r.recarrega()?;
         Ok(r)
     }

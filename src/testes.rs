@@ -165,3 +165,123 @@ fn link_pareia_e_cada_um_tem_o_seu_atendente() {
     let c = espera(&rx, |m, _| m == "sendMessage");
     assert_eq!((c["chat_id"].as_i64(), c["text"].as_str()), (Some(101), Some("Ainda não sei fazer isso: por enquanto só /ping e /equipe.")));
 }
+
+#[test]
+fn config_janela_e_cobranca_validadas() {
+    let tmp = TempDir::new("ariadne_config.");
+    let c = {
+        std::fs::write(tmp.0.join("configs.json"), "{}").unwrap();
+        config::load_de(&tmp.0).unwrap()
+    };
+    assert_eq!((c.modelo.as_str(), c.cobrar_a_cada_h, c.escalar_apos), ("claude-haiku-5-5", 3.0, 3));
+    assert_eq!(c.janela_cobranca, ("08:00".to_string(), "20:00".to_string()));
+    for ruim in [r#"{"janela_cobranca": ["20:00", "08:00"]}"#, r#"{"janela_cobranca": ["8h", "20:00"]}"#, r#"{"cobrar_a_cada_h": 0}"#] {
+        std::fs::write(tmp.0.join("configs.json"), ruim).unwrap();
+        assert!(config::load_de(&tmp.0).is_err(), "{ruim}");
+    }
+}
+
+// --- estado da equipe ---
+
+use crate::estado::{self, Fecho, Filtro};
+
+fn dt(s: &str) -> argos::util::Dt {
+    argos::util::from_iso(s).unwrap()
+}
+
+fn cfg() -> argos::tarefas::CfgCobranca {
+    config::Config::default().cfg_cobranca()
+}
+
+#[test]
+fn estado_vai_e_volta_com_chave_desconhecida() {
+    let tmp = TempDir::new("ariadne_estado.");
+    let arq = estado::arquivo(&tmp.0);
+    assert_eq!(estado::carregar(&arq).unwrap().proximo_id, 1, "sem arquivo: vazio");
+    let mut e = estado::Estado::default();
+    let now = dt("2026-11-09T10:00:00-03:00");
+    let mut t = estado::nova_tarefa(&mut e, "fulana", "beltrano", " mandar a proposta ", None, &now, &cfg()).unwrap();
+    e.tarefas[0].resto.insert("campo_futuro".into(), json!(1));
+    e.resto.insert("chave_futura".into(), json!("x"));
+    estado::gravar(&e, &arq).unwrap();
+    let lido = estado::carregar(&arq).unwrap();
+    t.resto.insert("campo_futuro".into(), json!(1));
+    assert_eq!(lido.tarefas, [t]);
+    assert_eq!((lido.proximo_id, &lido.resto["chave_futura"]), (2, &json!("x")));
+    assert!(!arq.with_extension("json.tmp").exists());
+
+    std::fs::write(&arq, "{quebrado").unwrap();
+    assert!(estado::carregar(&arq).is_err(), "JSON quebrado não sobe");
+}
+
+#[test]
+fn tarefa_sem_prazo_ja_cobra_e_com_prazo_espera_o_dia() {
+    let mut e = estado::Estado::default();
+    let now = dt("2026-11-09T10:00:00-03:00");
+    let t = estado::nova_tarefa(&mut e, "fulana", "beltrano", "proposta", None, &now, &cfg()).unwrap();
+    assert!(t.pendente);
+    assert_eq!((t.texto.as_str(), estado::de(&t), estado::para(&t)), ("proposta", "fulana", "beltrano"));
+    assert_eq!(t.cobrar_em.as_deref(), Some("2026-11-09T13:00:00-03:00"), "uma espera (3 h) depois");
+    // 19h + 3h passa da janela (até 20h): a primeira cobrança vai pra manhã seguinte
+    let t = estado::nova_tarefa(&mut e, "fulana", "beltrano", "x", None, &dt("2026-11-09T19:00:00-03:00"), &cfg()).unwrap();
+    assert_eq!(t.cobrar_em.as_deref(), Some("2026-11-10T08:00:00-03:00"));
+
+    let prazo = estado::le_quando("2026-11-13").unwrap();
+    let t = estado::nova_tarefa(&mut e, "fulana", "fulana", "relatório", Some(prazo), &now, &cfg()).unwrap();
+    assert!(!t.pendente && t.cobrar_em.is_none() && estado::pessoal(&t));
+    assert_eq!((t.proximo.as_str(), t.id), ("2026-11-13T09:00:00-03:00", 3));
+    assert_eq!(estado::prazo(&t), Some(prazo));
+    // o task_tick do Argos dá o ⏰ quando o prazo chega, e antes nada
+    let mut t = t;
+    assert_eq!(argos::tarefas::task_tick(&mut t, &now, &cfg()).unwrap(), None);
+    assert_eq!(argos::tarefas::task_tick(&mut t, &prazo, &cfg()).unwrap(), Some(argos::tarefas::Aviso::Vence));
+}
+
+#[test]
+fn lembrete_pessoal_so_o_dono_ve() {
+    let mut e = estado::Estado::default();
+    let now = dt("2026-11-09T10:00:00-03:00");
+    for (de, para, texto) in [("fulana", "beltrano", "a"), ("beltrano", "beltrano", "b"), ("sicrano", "sicrano", "c"), ("beltrano", "fulana", "d")] {
+        estado::nova_tarefa(&mut e, de, para, texto, None, &now, &cfg()).unwrap();
+    }
+    let ver = |eu: &str, f: &str| estado::visiveis(&e, eu, &Filtro::de_texto(f).unwrap()).iter().map(|t| t.texto.clone()).collect::<Vec<_>>().join("");
+    assert_eq!(ver("beltrano", "minhas"), "ab");
+    assert_eq!(ver("beltrano", "pedi"), "d");
+    assert_eq!(ver("beltrano", "equipe"), "abd");
+    assert_eq!(ver("fulana", "equipe"), "ad");
+    assert_eq!(ver("fulana", "de:beltrano"), "a");
+    assert_eq!(ver("sicrano", "de:sicrano"), "c");
+    assert!(Filtro::de_texto("de:").is_err() && Filtro::de_texto("todas").is_err());
+}
+
+#[test]
+fn fechar_tira_do_estado_e_vai_pro_historico() {
+    let tmp = TempDir::new("ariadne_estado.");
+    let hist = estado::historico(&tmp.0);
+    let mut e = estado::Estado::default();
+    let now = dt("2026-11-09T10:00:00-03:00");
+    estado::nova_tarefa(&mut e, "fulana", "beltrano", "a", None, &now, &cfg()).unwrap();
+    estado::nova_tarefa(&mut e, "fulana", "beltrano", "b", None, &now, &cfg()).unwrap();
+    let t = estado::fechar(&mut e, 2, Fecho::Recusada, Some(" sem tempo "), &now, &hist).unwrap();
+    assert_eq!((t.resto["status"].as_str(), t.resto["motivo"].as_str()), (Some("recusada"), Some("sem tempo")));
+    estado::fechar(&mut e, 1, Fecho::Feita, None, &now, &hist).unwrap();
+    assert!(e.tarefas.is_empty());
+    assert!(estado::fechar(&mut e, 1, Fecho::Feita, None, &now, &hist).is_err(), "já fechada");
+    let linhas: Vec<Value> = std::fs::read_to_string(&hist).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    assert_eq!(linhas.iter().map(|l| l["status"].as_str().unwrap()).collect::<Vec<_>>(), ["recusada", "feita"]);
+    assert!(linhas[1].get("motivo").is_none());
+}
+
+#[test]
+fn mapa_do_reply_poda_velho_e_excesso() {
+    let mut e = estado::Estado::default();
+    let now = dt("2026-11-09T10:00:00-03:00");
+    let ent = |id: i64, em: &str| estado::Entregue { chat: 7, message_id: id, de: "fulana".into(), texto: "oi".into(), em: em.into() };
+    estado::anota_entrega(&mut e, ent(1, "2026-11-01T10:00:00-03:00"), &now);
+    assert!(e.respostas.is_empty(), "mais de 7 dias");
+    for i in 0..(estado::RESPOSTA_MAX as i64 + 5) {
+        estado::anota_entrega(&mut e, ent(i, "2026-11-09T09:00:00-03:00"), &now);
+    }
+    assert_eq!(e.respostas.len(), estado::RESPOSTA_MAX);
+    assert!(estado::entrega(&e, 7, 4).is_none() && estado::entrega(&e, 7, 5).is_some() && estado::entrega(&e, 8, 5).is_none());
+}

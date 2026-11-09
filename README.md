@@ -56,6 +56,12 @@ sempre ignorado.
 | `assistente` | `"a Ariadne"` | o nome dela, com artigo |
 | `fuso` | `"America/Sao_Paulo"` | só os fusos do `.cargo/config.toml` vão no binário |
 | `cred_dir` | `"credenciais"` | relativo = a partir da pasta da Ariadne |
+| `modelo` | `"claude-haiku-5-5"` | o modelo da conversa |
+| `esforco` | `"medium"` | o esforço do modelo |
+| `cobrar_a_cada_h` | `3` | horas entre cobranças; sem resposta, espaça 1,5× até 72 h |
+| `janela_cobranca` | `["08:00", "20:00"]` | cobrança só sai entre essas horas |
+| `escalar_apos` | `3` | depois de tantas cobranças sem resposta, avisa quem pediu (uma vez) |
+| `conversa_reset_min` | `30` | a conversa com o modelo recomeça depois de tanto tempo parada |
 
 ## Pastas
 
@@ -66,6 +72,8 @@ membros/<slug>/membro.json          {nome, email}
 membros/<slug>/convite              0600, até a pessoa tocar no link
 membros/<slug>/chat_id              0600, depois
 membros/<slug>/conversa.jsonl       conversa recente (24 h)
+dados/estado.json                   tarefas abertas, recados agendados
+dados/historico.jsonl               tarefa fechada (feita, recusada, cancelada), uma por linha
 ```
 
 ## Licença

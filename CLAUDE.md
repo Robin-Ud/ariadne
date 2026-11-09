@@ -11,7 +11,8 @@ cargo run -- --selftest        # 3 membros, 600 mensagens, VmHWM
 cargo run -- --checar-config   # com ARIADNE_DIR: config, token (getMe) e membros
 ```
 
-Mapa: `config.rs` (configs.json), `membros.rs` (membro.json, convite, pareamento), `roteador.rs` (o
+Mapa: `config.rs` (configs.json), `estado.rs` (`dados/estado.json`: tarefas, recados agendados,
+mapa do reply; tarefa fechada vai pro `historico.jsonl`), `membros.rs` (membro.json, convite, pareamento), `roteador.rs` (o
 único `getUpdates`, `despacha` por chat), `atendente.rs` (thread por membro: `handle`/`tick`, menu
 por chat), `falso.rs` (Telegram falso), `main.rs` (CLI).
 
