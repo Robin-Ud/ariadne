@@ -496,3 +496,57 @@ fn botoes_da_tarefa_sem_modelo() {
     assert!(ed["text"].as_str().unwrap().contains("⚠️ <i>tarefa #2 não existe ou já foi fechada"), "{ed}");
     assert!(estado_de(&tmp.0).tarefas.is_empty());
 }
+
+// --- recados ---
+
+/// um atendente fora de thread, pra chamar `tick_em` com o relógio do teste
+fn atendente_de(r: &Roteador, slug: &str, chat: i64) -> crate::atendente::Atendente {
+    let mut tg = argos::rede::Telegram::new(argos::rede::agente(), "x");
+    tg.base = r.tg.base.clone();
+    crate::atendente::Atendente::new(tg, slug, chat, r.config.clone(), r.dir.clone(), r.equipe.clone(), None)
+}
+
+#[test]
+fn recado_na_hora_vai_pra_todos_menos_quem_manda() {
+    let (tmp, mut r, rx, crx) = time_de_teste(vec![
+        usa("t1", "recado", json!({"para": ["eu"], "texto": "x"})),
+        usa("t2", "recado", json!({"para": ["todos"], "texto": "chego 10h <amanhã>"})),
+        diz("Avisei o Beltrano."),
+    ]);
+    r.despacha(&msg(100, "private", "avisa todo mundo que chego 10h amanhã")).unwrap();
+    espera(&rx, enviado_a(200, "💬 <b>Fulana</b>: chego 10h &lt;amanhã&gt;"));
+    espera(&rx, enviado_a(100, "Avisei o Beltrano."));
+    crx.recv().unwrap();
+    assert_eq!(resultado(&crx.recv().unwrap()), "ValueError: recado pra si mesmo é lembrete: use delegar com para = eu");
+    assert_eq!(resultado(&crx.recv().unwrap()), "entregue pra Beltrano");
+    let e = estado_de(&tmp.0);
+    assert_eq!((e.respostas.len(), e.respostas[0].chat, e.respostas[0].de.as_str()), (1, 200, "fulana-souza"));
+    assert!(e.respostas[0].message_id > 0, "o message_id que o Telegram devolveu");
+    assert!(e.tarefas.is_empty() && e.recados.is_empty(), "recado não vira tarefa");
+}
+
+#[test]
+fn recado_agendado_sai_no_tick_de_quem_recebe() {
+    let (tmp, mut r, rx, crx) = time_de_teste(vec![
+        usa("t1", "recado", json!({"para": "beltrano", "texto": "reunião 9h", "quando": "2099-01-05T08:00"})),
+        diz("Agendei."),
+    ]);
+    r.despacha(&msg(100, "private", "amanhã 8h avisa o Beltrano da reunião")).unwrap();
+    espera(&rx, enviado_a(100, "Agendei."));
+    crx.recv().unwrap();
+    assert_eq!(resultado(&crx.recv().unwrap()), "recado #1 agendado pra segunda 05/01 08:00 (Beltrano)");
+    assert_eq!(estado_de(&tmp.0).recados.len(), 1);
+
+    let mut fulana = atendente_de(&r, "fulana-souza", 100);
+    let mut beltrano = atendente_de(&r, "beltrano", 200);
+    beltrano.tick_em(&dt("2099-01-05T07:59:00-03:00")).unwrap();
+    fulana.tick_em(&dt("2099-01-05T08:00:00-03:00")).unwrap();
+    assert_eq!(estado_de(&tmp.0).recados.len(), 1, "cedo pro Beltrano; e o tick da Fulana não entrega o dele");
+    beltrano.tick_em(&dt("2099-01-05T08:00:00-03:00")).unwrap();
+    espera(&rx, enviado_a(200, "💬 <b>Fulana</b>: reunião 9h"));
+    let e = estado_de(&tmp.0);
+    assert!(e.recados.is_empty(), "todos receberam: sai do estado");
+    assert_eq!((e.respostas.len(), e.respostas[0].de.as_str()), (1, "fulana-souza"));
+    beltrano.tick_em(&dt("2099-01-05T08:01:00-03:00")).unwrap();
+    assert!(rx.recv_timeout(std::time::Duration::from_millis(200)).is_err(), "uma vez só");
+}

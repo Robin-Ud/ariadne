@@ -41,7 +41,11 @@ Tarefas:\n\
 - Sem prazo, a tarefa já começa a ser cobrada (espaçado, só em horário de trabalho). Com prazo, o aviso sai no prazo.\n\
 - Prazo e quando: AAAA-MM-DD (vale às 09:00) ou AAAA-MM-DDTHH:MM, calculado pelo [agora] e pelos próximos dias da mensagem.\n\
 - Quem faz conclui, adia ou recusa (recusar pede o motivo: pergunte se não veio). Quem pediu cancela. Use o #id que vem nas tarefas.\n\
-- Cada ação já avisa o outro lado sozinha: não diga que vai avisar, diga que avisou (o resultado da ferramenta conta).\n",
+- Cada ação já avisa o outro lado sozinha: não diga que vai avisar, diga que avisou (o resultado da ferramenta conta).\n\n\
+Recados:\n\
+- \"Avisa o Fulano que…\", \"fala pra todo mundo que…\" → recado (não é tarefa: ninguém é cobrado). Com hora (\"amanhã às 8 avisa…\") → quando.\n\
+- O texto do recado vai como quem mandou falaria pro outro, em primeira pessoa (\"chego 10h amanhã\"), sem \"a Fulana disse que\": a mensagem já sai com o nome dela.\n\
+- Quem recebe pode responder (reply) ao recado, e a resposta volta pra quem mandou.\n",
         equipe.join("\n")
     )
 }
@@ -50,6 +54,13 @@ Tarefas:\n\
 fn enum_para(membros: &[Membro]) -> Value {
     let mut v: Vec<Value> = membros.iter().map(|m| json!(m.slug)).collect();
     v.push(json!("eu"));
+    Value::Array(v)
+}
+
+/// `para` do recado: os ids dos membros, mais `todos`
+fn enum_todos(membros: &[Membro]) -> Value {
+    let mut v: Vec<Value> = membros.iter().map(|m| json!(m.slug)).collect();
+    v.push(json!("todos"));
     Value::Array(v)
 }
 
@@ -66,6 +77,12 @@ pub fn ferramentas(membros: &[Membro]) -> Value {
              "para": {"type": "string", "enum": enum_para(membros), "description": "id de quem faz; eu = quem está falando"},
              "texto": {"type": "string", "description": "o que fazer, curto e no infinitivo, como quem pediu falaria"},
              "prazo": {"type": ["string", "null"], "description": "AAAA-MM-DD ou AAAA-MM-DDTHH:MM; null = sem prazo (já cobra)"}},
+          "required": ["para", "texto"]}},
+        {"name": "recado", "description": "Manda um recado pra um ou mais membros, na hora ou agendado. Não cria tarefa.",
+         "input_schema": {"type": "object", "properties": {
+             "para": {"type": "array", "items": {"type": "string", "enum": enum_todos(membros)}, "description": "ids de quem recebe; [\"todos\"] = a equipe toda menos quem manda"},
+             "texto": {"type": "string"},
+             "quando": {"type": ["string", "null"], "description": "AAAA-MM-DDTHH:MM pra agendar; null = agora"}},
           "required": ["para", "texto"]}},
         {"name": "concluir", "description": "Quem faz marca a tarefa como feita; quem pediu é avisado.",
          "input_schema": {"type": "object", "properties": {"id": id}, "required": ["id"]}},

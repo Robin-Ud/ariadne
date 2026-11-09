@@ -9,8 +9,8 @@ tocam num link. Ninguém mais precisa criar bot nem fazer login no Google.
 Usa o [Argos](https://github.com/Robin-Ud/argos) como biblioteca. O plano completo está no
 [`PLANO.md`](PLANO.md).
 
-> **Estado:** fase 1 em andamento: tarefas entre membros, lembretes pessoais e os botões. A
-> cobrança e os recados vêm em seguida.
+> **Estado:** fase 1 em andamento: tarefas entre membros, lembretes pessoais, botões e recados.
+> A cobrança e a resposta a recado vêm em seguida.
 
 ## Pôr no ar
 
@@ -56,6 +56,12 @@ usa as ferramentas dela. A conversa fica na memória e recomeça depois de `conv
 - **Botões:** a tarefa chega com ✅ feito / 🕒 depois / ❌ recusar. O 🕒 pergunta "pra quando?" ("18h",
   "amanhã 9", "sexta às 14") e o ❌ pergunta o motivo, sem passar pelo modelo. A pergunta vale 15 min.
   No lembrete pessoal, o ❌ vira 🗑 cancelar.
+
+## Recados
+
+"Avisa o Fulano que chego 10h", "fala pra todo mundo que amanhã não tem reunião". Sai na hora
+("💬 Beltrana: chego 10h") ou, com hora ("amanhã às 8 avisa…"), fica agendado e sai às 8. Recado
+não é tarefa: ninguém é cobrado. Agendado pra quem nunca entrou some depois de 7 dias.
 
 Tarefa sem prazo já começa a ser cobrada, uma espera (`cobrar_a_cada_h`) depois, dentro da
 `janela_cobranca`. Com prazo, o aviso sai no prazo (só o dia = às 09:00).

@@ -82,22 +82,26 @@ impl Atendente {
         if let Err(e) = self.menu() {
             println!("{}: setMyCommands: {e}", self.slug);
         }
+        // o tick roda a cada VOLTA mesmo com mensagem chegando sem parar
+        let mut ultimo_tick = Instant::now();
         loop {
-            match rx.recv_timeout(VOLTA) {
+            match rx.recv_timeout(VOLTA.saturating_sub(ultimo_tick.elapsed())) {
                 Ok(u) => {
                     if let Err(e) = self.handle(&u) {
                         println!("{}: erro: {e:?}", self.slug);
                         let _ = self.send(&format!("💥 erro: <code>{}</code>", corta(&esc(&e.to_string()), 300)));
                     }
                 }
-                Err(RecvTimeoutError::Timeout) => {
-                    if let Err(e) = self.tick() {
-                        println!("{}: erro nos avisos: {e:?}", self.slug);
-                    }
-                }
+                Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => {
                     println!("{}: atendente encerrado", self.slug);
                     return;
+                }
+            }
+            if ultimo_tick.elapsed() >= VOLTA {
+                ultimo_tick = Instant::now();
+                if let Err(e) = self.tick() {
+                    println!("{}: erro nos avisos: {e:?}", self.slug);
                 }
             }
         }
@@ -113,9 +117,9 @@ impl Atendente {
         self.tg.send(self.chat_id, texto, None, true)
     }
 
-    /// manda pro chat de um membro (eu também) e grava no `conversa.jsonl` dele. Devolve o `message_id`;
+    /// manda pro chat de um membro (eu também) e grava no `conversa.jsonl` dele. Devolve (chat, `message_id`);
     /// None = ele ainda não tocou no link do convite
-    pub fn envia_para(&mut self, slug: &str, texto: &str, teclado: Option<Value>) -> R<Option<i64>> {
+    pub fn envia_para(&mut self, slug: &str, texto: &str, teclado: Option<Value>) -> R<Option<(i64, i64)>> {
         let chat = if slug == self.slug { Some(self.chat_id) } else { trava(&self.equipe).membro(slug).and_then(|m| m.chat_id) };
         let Some(chat) = chat else { return Ok(None) };
         let meu = self.tg.conversa.clone();
@@ -124,7 +128,7 @@ impl Atendente {
         }
         let r = self.tg.send(chat, texto, teclado, true);
         self.tg.conversa = meu;
-        Ok(r?.get("message_id").and_then(Value::as_i64))
+        Ok(Some((chat, r?.get("message_id").and_then(Value::as_i64).unwrap_or_default())))
     }
 
     /// primeiro nome deste membro
@@ -180,8 +184,13 @@ impl Atendente {
         Ok(())
     }
 
-    /// avisos e cobranças (fase 1)
+    /// avisos sem mensagem: recados agendados (e, adiante, cobranças)
     pub fn tick(&mut self) -> R<()> {
-        Ok(())
+        self.tick_em(&argos::util::agora())
+    }
+
+    /// o `tick` com o relógio de fora (os testes andam com ele)
+    pub fn tick_em(&mut self, now: &argos::util::Dt) -> R<()> {
+        self.entrega_recados(now)
     }
 }

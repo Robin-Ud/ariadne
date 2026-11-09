@@ -19,6 +19,7 @@ Mapa:
 - `roteador.rs`: o único `getUpdates`, `despacha` por chat.
 - `atendente.rs`: thread por membro (`handle`/`tick`, menu por chat). `botoes.rs`: ✅ / 🕒 / ❌ da
   tarefa e a pergunta que vem depois.
+- `recados.rs`: recado na hora ou agendado (sai no `tick` de quem recebe).
 - `modelo.rs`: persona, definição das ferramentas, laço com o modelo. `ferramentas.rs`: o que cada
   ferramenta faz.
 - `falso.rs`: Telegram e modelo falsos. `main.rs`: CLI.

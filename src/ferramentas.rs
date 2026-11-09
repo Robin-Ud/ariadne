@@ -37,6 +37,7 @@ impl Atendente {
                 Ok(if v.is_empty() { "nenhuma tarefa aberta nesse filtro".into() } else { v.join("\n") })
             }
             "delegar" => self.delegar(args),
+            "recado" => self.recado(args),
             "concluir" => self.fecha(id_de(args)?, Fecho::Feita, None),
             "recusar" => {
                 let motivo = arg_str(args, "motivo")?;
