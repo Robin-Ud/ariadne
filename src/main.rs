@@ -26,11 +26,24 @@ fn username(c: &config::Config) -> Option<String> {
     }
 }
 
-/// ariadne --membro "Nome" [--email x]: cria o membro e imprime o link do convite
-fn cli_membro(nome: &str, email: Option<&str>) -> R<()> {
+/// ariadne --membro "Nome" [--email x] [--chefe]: cria o membro e imprime o link do convite
+fn cli_membro(nome: &str, opcoes: &[&str]) -> R<()> {
+    let (mut email, mut chefe) = (None, false);
+    let mut it = opcoes.iter();
+    while let Some(o) = it.next() {
+        match *o {
+            "--email" => email = Some(*it.next().unwrap_or_else(|| uso())),
+            "--chefe" => chefe = true,
+            _ => uso(),
+        }
+    }
     let dir = config::data_dir();
     let c = load(&dir)?;
-    let (m, codigo) = membros::cadastrar(&dir, nome, email, agora_s())?;
+    let (mut m, codigo) = membros::cadastrar(&dir, nome, email, agora_s())?;
+    if chefe {
+        m = membros::marcar_chefe(&dir, &m.slug, true)?;
+        println!("{}: chefe (pedido em destaque, resumo quinzenal)", m.nome);
+    }
     let dias = membros::CONVITE_S / 86400;
     match username(&c) {
         Some(u) => println!("{} ({}): mande este link, vale {dias} dias e uma vez só:\n{}", m.nome, m.slug, membros::link(&u, &codigo)),
@@ -68,7 +81,8 @@ fn cli_checar_config() -> R<()> {
             None if membros::convite_pendente(&dir, &m.slug, agora) => "convite mandado",
             None => "sem convite (ariadne --membro)",
         };
-        println!("  {} ({}): {estado}{}", m.nome, m.slug, m.email.as_deref().map(|e| format!(" · {e}")).unwrap_or_default());
+        let chefe = if m.chefe { " · chefe" } else { "" };
+        println!("  {} ({}): {estado}{chefe}{}", m.nome, m.slug, m.email.as_deref().map(|e| format!(" · {e}")).unwrap_or_default());
     }
     // a chave passa? count_tokens é de graça
     let arq = Path::new(&c.cred_dir).join("anthropic_key");
@@ -119,7 +133,7 @@ fn cli_selftest() -> R<()> {
 }
 
 fn uso() -> ! {
-    eprintln!("uso: ariadne                               roda\n      ariadne --membro \"Nome\" [--email x]     cadastra e imprime o link do convite\n      ariadne --checar-config                     valida config e token, lista os membros\n      ariadne --selftest                          3 membros contra um Telegram falso, pico de memória");
+    eprintln!("uso: ariadne                               roda\n      ariadne --membro \"Nome\" [--email x] [--chefe]  cadastra e imprime o link do convite\n      ariadne --checar-config                     valida config e token, lista os membros\n      ariadne --selftest                          3 membros contra um Telegram falso, pico de memória");
     std::process::exit(2);
 }
 
@@ -130,8 +144,7 @@ fn main() {
         [] => cli_rodar(),
         ["--checar-config"] => cli_checar_config(),
         ["--selftest"] => cli_selftest(),
-        ["--membro", nome] => cli_membro(nome, None),
-        ["--membro", nome, "--email", e] => cli_membro(nome, Some(e)),
+        ["--membro", nome, opcoes @ ..] => cli_membro(nome, opcoes),
         _ => uso(),
     };
     if let Err(e) = r {

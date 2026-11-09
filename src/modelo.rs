@@ -24,7 +24,7 @@ const MAX_HISTORICO: usize = 40;
 /// a persona e a equipe. Não muda de mensagem pra mensagem (fica em cache)
 pub fn system(config: &Config, membros: &[Membro]) -> String {
     let nome = config.nome();
-    let equipe: Vec<String> = membros.iter().map(|m| format!("- {} (`{}`)", m.nome, m.slug)).collect();
+    let equipe: Vec<String> = membros.iter().map(|m| format!("- {} (`{}`){}", m.nome, m.slug, if m.chefe { ", o chefe" } else { "" })).collect();
     format!(
         "Você é {nome}, a secretária de uma equipe pequena, no Telegram. Cada membro fala com você no privado, \
 e você leva tarefas e recados de um pro outro.\n\n\

@@ -14,6 +14,9 @@ pub struct Membro {
     pub nome: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
+    /// chefe: o pedido dele chega em destaque e é cobrado todo dia; ele recebe o resumo quinzenal
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub chefe: bool,
     /// nome da pasta
     #[serde(skip)]
     pub slug: String,
@@ -65,15 +68,29 @@ pub fn cadastrar(dir: &Path, nome: &str, email: Option<&str>, agora: i64) -> R<(
     }
     let p = pasta(dir).join(&slug);
     std::fs::create_dir_all(&p)?;
-    let mut m = ler(dir, &slug).unwrap_or(Membro { nome: String::new(), email: None, slug: slug.clone(), chat_id: None, resto: Map::new() });
+    let mut m = ler(dir, &slug).unwrap_or(Membro { nome: String::new(), email: None, chefe: false, slug: slug.clone(), chat_id: None, resto: Map::new() });
     m.nome = nome.to_string();
     if let Some(e) = email.map(str::trim).filter(|e| !e.is_empty()) {
         m.email = Some(e.to_string());
     }
-    std::fs::write(p.join("membro.json"), serde_json::to_string_pretty(&m)? + "\n")?;
+    gravar(dir, &m)?;
     let codigo = codigo_convite()?;
     grava_secreto(&p.join("convite"), &serde_json::to_string(&Convite { codigo: codigo.clone(), criado: agora })?)?;
     Ok((m, codigo))
+}
+
+/// regrava o `membro.json` (o `chat_id` e o convite ficam nos arquivos deles)
+pub fn gravar(dir: &Path, m: &Membro) -> R<()> {
+    std::fs::write(pasta(dir).join(&m.slug).join("membro.json"), serde_json::to_string_pretty(m)? + "\n")?;
+    Ok(())
+}
+
+/// liga ou desliga o chefe de um membro que já existe
+pub fn marcar_chefe(dir: &Path, slug: &str, chefe: bool) -> R<Membro> {
+    let mut m = ler(dir, slug)?;
+    m.chefe = chefe;
+    gravar(dir, &m)?;
+    Ok(m)
 }
 
 pub fn ler(dir: &Path, slug: &str) -> R<Membro> {

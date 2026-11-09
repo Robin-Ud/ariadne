@@ -28,6 +28,9 @@ ariadne --checar-config                       # config, token (getMe), chave e m
 ariadne                                       # roda (systemd na VM)
 ```
 
+`--chefe` marca o membro como chefe (pode pôr depois, rodando de novo com o mesmo nome): o pedido
+dele chega em destaque e ele recebe o resumo quinzenal (ver Chefe).
+
 O `--membro` imprime um link `https://t.me/<bot>?start=<código>` pra mandar pra pessoa. Ela toca, o
 Telegram abre o bot, ela toca em **Começar** e pronto. O link vale 7 dias e uma vez só. Rodar o
 `--membro` de novo pro mesmo nome gera outro link (celular novo, por exemplo). Pode cadastrar com o
@@ -111,7 +114,7 @@ sempre ignorado.
 configs.json
 credenciais/telegram_token          0600
 credenciais/anthropic_key           0600, uma chave pra equipe toda
-membros/<slug>/membro.json          {nome, email}
+membros/<slug>/membro.json          {nome, email, chefe}
 membros/<slug>/convite              0600, até a pessoa tocar no link
 membros/<slug>/chat_id              0600, depois
 membros/<slug>/conversa.jsonl       conversa recente (24 h)

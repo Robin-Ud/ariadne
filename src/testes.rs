@@ -618,3 +618,21 @@ fn reply_a_recado_volta_pra_quem_mandou() {
     r.despacha(&reply(id + 1000, "e aí?")).unwrap();
     espera(&rx, enviado_a(200, "💥 erro"));
 }
+
+// --- chefe ---
+
+#[test]
+fn chefe_fica_no_membro_json_e_no_prompt() {
+    let tmp = TempDir::new("ariadne_chefe.");
+    membros::cadastrar(&tmp.0, "Chefia", None, 0).unwrap();
+    membros::cadastrar(&tmp.0, "Fulana", None, 0).unwrap();
+    membros::marcar_chefe(&tmp.0, "chefia", true).unwrap();
+    let json = std::fs::read_to_string(membros::pasta(&tmp.0).join("chefia/membro.json")).unwrap();
+    assert!(json.contains(r#""chefe": true"#), "{json}");
+    assert!(!std::fs::read_to_string(membros::pasta(&tmp.0).join("fulana/membro.json")).unwrap().contains("chefe"), "quem não é chefe nem tem a chave");
+    membros::cadastrar(&tmp.0, "Chefia", None, 0).unwrap();
+    let v = membros::listar(&tmp.0).unwrap();
+    assert!(v[0].chefe && !v[1].chefe, "recadastrar (link novo) não tira o chefe");
+    let system = crate::modelo::system(&config::Config::default(), &v);
+    assert!(system.contains("- Chefia (`chefia`), o chefe\n- Fulana (`fulana`)\n"), "{system}");
+}
