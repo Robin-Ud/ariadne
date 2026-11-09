@@ -96,6 +96,14 @@ fn espera(rx: &Receiver<(String, Value)>, p: impl Fn(&str, &Value) -> bool) -> V
     }
 }
 
+/// nenhuma mensagem (sendMessage) que satisfaça `p` em `ms` milissegundos; o resto (menu, botões) passa
+fn nada(rx: &Receiver<(String, Value)>, ms: u64, p: impl Fn(&Value) -> bool) {
+    let fim = std::time::Instant::now() + std::time::Duration::from_millis(ms);
+    while let Ok((m, c)) = rx.recv_timeout(fim.saturating_duration_since(std::time::Instant::now())) {
+        assert!(!(m == "sendMessage" && p(&c)), "não devia ter saído: {c}");
+    }
+}
+
 fn msg(chat: i64, tipo: &str, texto: &str) -> Value {
     json!({"update_id": 1, "message": {"message_id": 9, "from": {"id": chat}, "chat": {"id": chat, "type": tipo}, "text": texto}})
 }
@@ -548,5 +556,44 @@ fn recado_agendado_sai_no_tick_de_quem_recebe() {
     assert!(e.recados.is_empty(), "todos receberam: sai do estado");
     assert_eq!((e.respostas.len(), e.respostas[0].de.as_str()), (1, "fulana-souza"));
     beltrano.tick_em(&dt("2099-01-05T08:01:00-03:00")).unwrap();
-    assert!(rx.recv_timeout(std::time::Duration::from_millis(200)).is_err(), "uma vez só");
+    nada(&rx, 200, |_| true);
+}
+
+// --- cobrança ---
+
+#[test]
+fn cobra_espacado_na_janela_e_escala_uma_vez() {
+    let (tmp, r, rx, _crx) = time_de_teste(vec![]);
+    let cfg = r.config.cfg_cobranca();
+    {
+        let mut eq = crate::atendente::trava(&r.equipe);
+        estado::nova_tarefa(&mut eq.estado, "fulana-souza", "beltrano", "mandar a proposta", None, &dt("2026-11-09T10:00:00-03:00"), &cfg).unwrap();
+        estado::nova_tarefa(&mut eq.estado, "beltrano", "beltrano", "pagar o boleto", Some(dt("2026-11-10T09:00:00-03:00")), &dt("2026-11-09T10:00:00-03:00"), &cfg).unwrap();
+        eq.gravar().unwrap();
+    }
+    let mut b = atendente_de(&r, "beltrano", 200);
+    let cobrar_em = || estado_de(&tmp.0).tarefas[0].cobrar_em.clone().unwrap();
+    assert_eq!(cobrar_em(), "2026-11-09T13:00:00-03:00");
+    b.tick_em(&dt("2026-11-09T12:59:00-03:00")).unwrap();
+    nada(&rx, 200, |_| true);
+
+    let mut horas = vec![];
+    for n in 1..=4 {
+        let quando = cobrar_em();
+        horas.push(quando[5..16].to_string());
+        b.tick_em(&dt(&quando)).unwrap();
+        let c = espera(&rx, enviado_a(200, "🔔 mandar a proposta (pedido de Fulana"));
+        assert_eq!(c["reply_markup"]["inline_keyboard"][0][0]["callback_data"], "ok:1");
+        if n == 3 {
+            espera(&rx, enviado_a(100, "⚠️ <b>Beltrano</b> não respondeu 3 cobranças de: mandar a proposta"));
+        }
+        if n == 4 {
+            // o lembrete pessoal vence no prazo (10/11 09h), no meio das cobranças, e só pro dono
+            let c = espera(&rx, enviado_a(200, "⏰ pagar o boleto"));
+            assert_eq!(c["reply_markup"]["inline_keyboard"][0][2]["callback_data"], "cx:2");
+        }
+    }
+    // 13h; +4h30 = 17h30; +6h45 cai fora da janela (até 20h) → 08h; e segue espaçando
+    assert_eq!(horas[..3], ["11-09T13:00", "11-09T17:30", "11-10T08:00"]);
+    nada(&rx, 300, |c| c["chat_id"] == 100);
 }

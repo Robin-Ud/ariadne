@@ -9,8 +9,8 @@ tocam num link. Ninguém mais precisa criar bot nem fazer login no Google.
 Usa o [Argos](https://github.com/Robin-Ud/argos) como biblioteca. O plano completo está no
 [`PLANO.md`](PLANO.md).
 
-> **Estado:** fase 1 em andamento: tarefas entre membros, lembretes pessoais, botões e recados.
-> A cobrança e a resposta a recado vêm em seguida.
+> **Estado:** fase 1 em andamento: tarefas entre membros, lembretes pessoais, botões, cobrança e
+> recados. Falta responder a recado.
 
 ## Pôr no ar
 
@@ -63,8 +63,15 @@ usa as ferramentas dela. A conversa fica na memória e recomeça depois de `conv
 ("💬 Beltrana: chego 10h") ou, com hora ("amanhã às 8 avisa…"), fica agendado e sai às 8. Recado
 não é tarefa: ninguém é cobrado. Agendado pra quem nunca entrou some depois de 7 dias.
 
-Tarefa sem prazo já começa a ser cobrada, uma espera (`cobrar_a_cada_h`) depois, dentro da
-`janela_cobranca`. Com prazo, o aviso sai no prazo (só o dia = às 09:00).
+## Cobrança
+
+Tarefa sem prazo já começa a ser cobrada ("🔔 …", com os botões), uma espera (`cobrar_a_cada_h`)
+depois, dentro da `janela_cobranca`. Com prazo, o "⏰" sai no prazo (só o dia = às 09:00), e a
+cobrança começa dali. Sem resposta, cada cobrança espaça 1,5× a anterior, até 72 h; concluir, adiar
+ou recusar para tudo. São as regras de tempo do Argos.
+
+Depois de `escalar_apos` cobranças sem resposta, quem pediu recebe "⚠️ Fulano não respondeu 3
+cobranças de …", uma vez só. A cobrança continua.
 
 ## Como funciona
 

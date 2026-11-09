@@ -184,13 +184,64 @@ impl Atendente {
         Ok(())
     }
 
-    /// avisos sem mensagem: recados agendados (e, adiante, cobranças)
+    /// avisos sem mensagem: cobranças e recados agendados
     pub fn tick(&mut self) -> R<()> {
         self.tick_em(&argos::util::agora())
     }
 
     /// o `tick` com o relógio de fora (os testes andam com ele)
     pub fn tick_em(&mut self, now: &argos::util::Dt) -> R<()> {
+        self.cobra(now)?;
         self.entrega_recados(now)
+    }
+
+    /// As tarefas que eu faço, pelo relógio do Argos (`task_tick`): ⏰ no prazo, 🔔 na cobrança espaçada.
+    /// Depois de `escalar_apos` cobranças sem resposta, quem pediu fica sabendo, uma vez.
+    fn cobra(&mut self, now: &argos::util::Dt) -> R<()> {
+        use argos::tarefas::{nota_desde, sem_resposta, task_tick, Aviso};
+        let cfg = self.config.cfg_cobranca();
+        let mut avisos = vec![];
+        {
+            let mut eq = trava(&self.equipe);
+            let mut mudou = false;
+            for t in eq.estado.tarefas.iter_mut().filter(|t| estado::para(t) == self.slug) {
+                let antes = t.clone();
+                // uma tarefa com data quebrada não trava a cobrança das outras
+                let aviso = task_tick(t, now, &cfg).unwrap_or_else(|e| {
+                    println!("{}: tarefa #{}: {e}", self.slug, t.id);
+                    None
+                });
+                if let Some(k) = aviso {
+                    let escala = k == Aviso::Cobra && !estado::pessoal(t) && sem_resposta(t) >= self.config.escalar_apos && !t.resto.contains_key("escalado");
+                    if escala {
+                        t.resto.insert("escalado".into(), json!(argos::util::iso(now)));
+                    }
+                    avisos.push((t.clone(), k, escala));
+                }
+                mudou |= *t != antes;
+            }
+            if mudou {
+                eq.gravar()?;
+            }
+        }
+        for (t, k, escala) in avisos {
+            let (de, eu) = {
+                let eq = trava(&self.equipe);
+                (eq.primeiro_nome(estado::de(&t)), eq.primeiro_nome(&self.slug))
+            };
+            let pedido = if estado::pessoal(&t) { String::new() } else { format!(" (pedido de {de})") };
+            let msg = match k {
+                Aviso::Vence => format!("⏰ {}{}{}", esc(&t.texto), esc(&pedido), esc(&crate::ferramentas::nota_prazo(&t))),
+                Aviso::Cobra => format!("🔔 {}{}{}", esc(&t.texto), esc(&pedido), esc(&nota_desde(&t, now))),
+            };
+            let eu_slug = self.slug.clone();
+            self.envia_para(&eu_slug, &msg, Some(crate::botoes::teclado(t.id, estado::pessoal(&t))))?;
+            if escala {
+                let n = sem_resposta(&t);
+                let aviso = format!("⚠️ <b>{}</b> não respondeu {n} cobranças de: {}", esc(&eu), esc(&t.texto));
+                self.envia_para(estado::de(&t), &aviso, None)?;
+            }
+        }
+        Ok(())
     }
 }
