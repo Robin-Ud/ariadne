@@ -12,11 +12,17 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
+/// o que as threads dividem: quem é da equipe (e, na fase 1, o estado das tarefas e recados)
+#[derive(Debug, Default)]
+pub struct Time {
+    pub membros: Vec<Membro>,
+}
+
 /// a equipe, compartilhada entre as threads. Trava só pra ler ou mudar, nunca durante chamada de rede.
-pub type Equipe = Arc<Mutex<Vec<Membro>>>;
+pub type Equipe = Arc<Mutex<Time>>;
 
 /// thread que caiu com a trava na mão não derruba as outras
-pub fn trava(e: &Equipe) -> MutexGuard<'_, Vec<Membro>> {
+pub fn trava(e: &Equipe) -> MutexGuard<'_, Time> {
     e.lock().unwrap_or_else(|p| p.into_inner())
 }
 
@@ -74,7 +80,7 @@ impl Atendente {
     /// primeiro nome deste membro
     fn nome(&self) -> String {
         let eq = trava(&self.equipe);
-        let n = eq.iter().find(|m| m.slug == self.slug).map(|m| m.nome.clone()).unwrap_or_default();
+        let n = eq.membros.iter().find(|m| m.slug == self.slug).map(|m| m.nome.clone()).unwrap_or_default();
         n.split_whitespace().next().unwrap_or(&self.slug).to_string()
     }
 
@@ -88,7 +94,7 @@ impl Atendente {
 
     fn texto_equipe(&self) -> String {
         let agora = argos::util::agora().timestamp();
-        let eq = trava(&self.equipe).clone();
+        let eq = trava(&self.equipe).membros.clone();
         let mut t = String::from("👥 <b>Equipe</b>");
         for m in &eq {
             let (icone, nota) = match m.chat_id {

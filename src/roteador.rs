@@ -1,7 +1,7 @@
 //! Um `getUpdates` só (o Telegram dá 409 pro segundo processo no mesmo bot) que entrega cada update,
 //! pelo chat, pra thread do membro (`atendente.rs`). Chat desconhecido só entra com `/start <código>`.
 
-use crate::atendente::{self, Atendente, Equipe};
+use crate::atendente::{self, Atendente, Equipe, Time};
 use crate::config::Config;
 use crate::membros;
 use argos::rede::Telegram;
@@ -37,7 +37,7 @@ pub fn codigo_do_start(u: &Value) -> Option<&str> {
 impl Roteador {
     /// lê `membros/` e sobe um atendente por membro pareado
     pub fn new(dir: PathBuf, config: Config, tg: Telegram) -> R<Roteador> {
-        let mut r = Roteador { tg, dir, config, equipe: Arc::new(Mutex::new(vec![])), filas: HashMap::new() };
+        let mut r = Roteador { tg, dir, config, equipe: Arc::new(Mutex::new(Time::default())), filas: HashMap::new() };
         r.recarrega()?;
         Ok(r)
     }
@@ -53,7 +53,7 @@ impl Roteador {
     /// celular, pasta apagada) é solta, o que encerra a thread dele
     pub fn recarrega(&mut self) -> R<()> {
         let lista = membros::listar(&self.dir)?;
-        *atendente::trava(&self.equipe) = lista.clone();
+        atendente::trava(&self.equipe).membros = lista.clone();
         self.filas.retain(|chat, _| lista.iter().any(|m| m.chat_id == Some(*chat)));
         for m in lista {
             let Some(chat) = m.chat_id else { continue };
