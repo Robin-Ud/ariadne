@@ -5,6 +5,7 @@
 //! o outro lado, menos no lembrete pessoal (`de == para`).
 
 use crate::atendente::{trava, Atendente};
+use crate::botoes::teclado;
 use crate::estado::{self, Fecho, Filtro};
 use crate::modelo::linha_tarefa;
 use argos::rascunho::esc;
@@ -85,7 +86,7 @@ impl Atendente {
             return Ok(format!("lembrete #{} criado; {}", t.id, quando(&t)));
         }
         let msg = format!("📌 <b>{}</b> te pediu: {}{}", esc(&eu), esc(&t.texto), esc(&nota_prazo(&t)));
-        Ok(match self.envia_para(&para, &msg, None)? {
+        Ok(match self.envia_para(&para, &msg, Some(teclado(t.id, false)))? {
             Some(_) => format!("tarefa #{} criada pra {nome_para}, que já recebeu; {}", t.id, quando(&t)),
             None => format!("tarefa #{} criada, mas {nome_para} ainda não entrou no Telegram comigo (não tocou no link do convite): não foi avisado", t.id),
         })
@@ -113,7 +114,7 @@ impl Atendente {
     }
 
     /// fecha a tarefa e avisa o outro lado
-    fn fecha(&mut self, id: i64, como: Fecho, motivo: Option<&str>) -> R<String> {
+    pub(crate) fn fecha(&mut self, id: i64, como: Fecho, motivo: Option<&str>) -> R<String> {
         let now = agora();
         self.tarefa_pra(id, Some(como))?;
         let (t, eu) = {

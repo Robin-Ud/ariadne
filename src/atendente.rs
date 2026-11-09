@@ -1,6 +1,7 @@
 //! Uma thread por membro: o laço do `Bot::run` do Argos com `recv_timeout` no lugar do `getUpdates`.
 //! Chegou update → `handle`; deu o tempo → `tick`. Um membro esperando o modelo não trava os outros.
 
+use crate::botoes::Espera;
 use crate::config::Config;
 use crate::estado::{self, Estado};
 use crate::membros::{self, Membro};
@@ -68,11 +69,13 @@ pub struct Atendente {
     /// a conversa com o modelo (ver `modelo.rs`)
     pub historico: Vec<Value>,
     pub ultimo: Option<Instant>,
+    /// tocou em 🕒 ou ❌: a próxima mensagem é a hora ou o motivo (ver `botoes.rs`)
+    pub esperando: Option<(Espera, Instant)>,
 }
 
 impl Atendente {
     pub fn new(tg: Telegram, slug: &str, chat_id: i64, config: Config, dir: PathBuf, equipe: Equipe, claude: Option<Claude>) -> Atendente {
-        Atendente { tg, slug: slug.to_string(), chat_id, config, dir, equipe, claude, historico: vec![], ultimo: None }
+        Atendente { tg, slug: slug.to_string(), chat_id, config, dir, equipe, claude, historico: vec![], ultimo: None, esperando: None }
     }
 
     pub fn laco(mut self, rx: Receiver<Value>) {
@@ -106,7 +109,7 @@ impl Atendente {
         Ok(())
     }
 
-    fn send(&self, texto: &str) -> R<Value> {
+    pub(crate) fn send(&self, texto: &str) -> R<Value> {
         self.tg.send(self.chat_id, texto, None, true)
     }
 
@@ -155,11 +158,14 @@ impl Atendente {
 
     pub fn handle(&mut self, u: &Value) -> R<()> {
         if let Some(q) = u.get("callback_query") {
-            self.tg.call("answerCallbackQuery", 30, json!({"callback_query_id": q.get("id")}))?;
-            return Ok(());
+            return self.botao(q);
         }
         let texto = u.pointer("/message/text").and_then(Value::as_str).unwrap_or_default().trim();
         self.tg.registra("eu", if texto.is_empty() { "[sem texto]" } else { texto });
+        if let Some(r) = self.responde_espera(texto)? {
+            self.send(&r)?;
+            return Ok(());
+        }
         let comando = texto.split_whitespace().next().unwrap_or_default();
         let comando = comando.split('@').next().unwrap_or_default();
         let r = match comando {

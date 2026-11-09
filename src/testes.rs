@@ -449,3 +449,50 @@ fn lembrete_pessoal_nao_avisa_ninguem() {
     assert_eq!(resultado(&crx.recv().unwrap()), "#1 fechada");
     assert!(estado_de(&tmp.0).tarefas.is_empty());
 }
+
+fn toque(chat: i64, message_id: i64, texto: &str, data: &str) -> Value {
+    json!({"update_id": 1, "callback_query": {"id": "q", "from": {"id": chat}, "data": data,
+           "message": {"message_id": message_id, "chat": {"id": chat, "type": "private"}, "text": texto}}})
+}
+
+#[test]
+fn botoes_da_tarefa_sem_modelo() {
+    // só o delegar passa pelo modelo; depois, a fila acaba e qualquer chamada daria 💥
+    let (tmp, mut r, rx, _crx) = time_de_teste(vec![
+        usa("t1", "delegar", json!({"para": "beltrano", "texto": "a"})),
+        usa("t2", "delegar", json!({"para": "beltrano", "texto": "b"})),
+        diz("mandei as duas"),
+    ]);
+    r.despacha(&msg(100, "private", "pede a e b pro Beltrano")).unwrap();
+    let entrega = espera(&rx, enviado_a(200, "te pediu: a"));
+    let botoes = &entrega["reply_markup"]["inline_keyboard"][0];
+    assert_eq!(botoes.as_array().unwrap().iter().map(|b| b["callback_data"].as_str().unwrap()).collect::<Vec<_>>(), ["ok:1", "hr:1", "no:1"]);
+    espera(&rx, enviado_a(100, "mandei as duas"));
+
+    // ❌ → pergunta o motivo → o motivo vai pra quem pediu
+    r.despacha(&toque(200, 50, "📌 Fulana te pediu: a", "no:1")).unwrap();
+    espera(&rx, enviado_a(200, "Por que não dá pra fazer a #1?"));
+    r.despacha(&msg(200, "private", "sem verba esse mês")).unwrap();
+    espera(&rx, enviado_a(100, "❌ <b>Beltrano</b> recusou: a\nMotivo: sem verba esse mês"));
+    espera(&rx, enviado_a(200, "#1 fechada; avisei Fulana"));
+
+    // 🕒 → "amanhã 9" → a cobrança muda e quem pediu fica sabendo
+    r.despacha(&toque(200, 51, "📌 Fulana te pediu: b", "hr:2")).unwrap();
+    espera(&rx, enviado_a(200, "Pra quando fica a #2?"));
+    r.despacha(&msg(200, "private", "amanhã 9")).unwrap();
+    espera(&rx, enviado_a(100, "🕒 <b>Beltrano</b> deixou pra"));
+    espera(&rx, enviado_a(200, "#2: cobro"));
+    let amanha = (argos::util::agora() + chrono::Duration::days(1)).format("%Y-%m-%dT09:00").to_string();
+    assert!(estado_de(&tmp.0).tarefas[0].cobrar_em.as_deref().unwrap().starts_with(&amanha));
+
+    // ✅ → a mensagem perde os botões e mostra o resultado; tocar de novo não fecha duas vezes
+    r.despacha(&toque(200, 51, "📌 Fulana te pediu: <b>", "ok:2")).unwrap();
+    espera(&rx, enviado_a(100, "✅ <b>Beltrano</b> concluiu: b"));
+    let ed = espera(&rx, |m, _| m == "editMessageText");
+    assert_eq!((ed["message_id"].as_i64(), ed["text"].as_str()), (Some(51), Some("📌 Fulana te pediu: &lt;b&gt;\n\n✅ <i>#2 fechada; avisei Fulana</i>")));
+    assert_eq!(ed["reply_markup"]["inline_keyboard"], json!([]));
+    r.despacha(&toque(200, 51, "x", "ok:2")).unwrap();
+    let ed = espera(&rx, |m, _| m == "editMessageText");
+    assert!(ed["text"].as_str().unwrap().contains("⚠️ <i>tarefa #2 não existe ou já foi fechada"), "{ed}");
+    assert!(estado_de(&tmp.0).tarefas.is_empty());
+}
