@@ -4,11 +4,11 @@
 use crate::atendente::{self, Atendente, Equipe, Time};
 use crate::config::Config;
 use crate::membros;
-use argos::rede::Telegram;
+use argos::rede::{Claude, Telegram};
 use argos::util::R;
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex};
 
@@ -19,6 +19,8 @@ pub struct Roteador {
     pub equipe: Equipe,
     /// chat → fila da thread do membro
     filas: HashMap<i64, Sender<Value>>,
+    /// URL do modelo (só os testes trocam)
+    pub claude_url: Option<String>,
 }
 
 /// chat do update e se é conversa privada (message ou botão)
@@ -38,7 +40,7 @@ impl Roteador {
     /// lê `membros/` e sobe um atendente por membro pareado
     pub fn new(dir: PathBuf, config: Config, tg: Telegram) -> R<Roteador> {
         let time = Time::carregar(&dir)?;
-        let mut r = Roteador { tg, dir, config, equipe: Arc::new(Mutex::new(time)), filas: HashMap::new() };
+        let mut r = Roteador { tg, dir, config, equipe: Arc::new(Mutex::new(time)), filas: HashMap::new(), claude_url: None };
         r.recarrega()?;
         Ok(r)
     }
@@ -65,13 +67,27 @@ impl Roteador {
             tg.base = self.tg.base.clone();
             tg.file_base = self.tg.file_base.clone();
             tg.conversa = Some(membros::pasta(&self.dir).join(&m.slug).join("conversa.jsonl"));
-            let a = Atendente { tg, slug: m.slug.clone(), chat_id: chat, config: self.config.clone(), dir: self.dir.clone(), equipe: self.equipe.clone() };
+            let a = Atendente::new(tg, &m.slug, chat, self.config.clone(), self.dir.clone(), self.equipe.clone(), self.claude());
             let (tx, rx) = channel();
             std::thread::Builder::new().name(m.slug.clone()).spawn(move || a.laco(rx))?;
             println!("atendente: {} (chat {chat})", m.slug);
             self.filas.insert(chat, tx);
         }
         Ok(())
+    }
+
+    /// um `Claude` por atendente (a chave é relida a cada 401); sem `anthropic_key`, None
+    fn claude(&self) -> Option<Claude> {
+        let mut c = Claude::de_arquivo(argos::rede::agente(), &Path::new(&self.config.cred_dir).join("anthropic_key")).ok()?;
+        if let Some(u) = &self.claude_url {
+            c.url = u.clone();
+        }
+        Some(c)
+    }
+
+    /// solta todos os atendentes (as threads encerram); o próximo `recarrega` sobe de novo
+    pub fn solta_todos(&mut self) {
+        self.filas.clear();
     }
 
     pub fn despacha(&mut self, u: &Value) -> R<()> {

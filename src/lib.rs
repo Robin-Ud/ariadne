@@ -4,7 +4,9 @@ pub mod atendente;
 pub mod config;
 pub mod estado;
 pub mod falso;
+pub mod ferramentas;
 pub mod membros;
+pub mod modelo;
 pub mod roteador;
 
 #[cfg(test)]

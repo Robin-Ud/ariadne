@@ -5,13 +5,13 @@ use crate::config::Config;
 use crate::estado::{self, Estado};
 use crate::membros::{self, Membro};
 use argos::rascunho::esc;
-use argos::rede::Telegram;
+use argos::rede::{Claude, Telegram};
 use argos::util::{corta, R};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// o que as threads dividem: quem é da equipe e o estado das tarefas e recados
 #[derive(Debug, Default)]
@@ -63,9 +63,18 @@ pub struct Atendente {
     pub config: Config,
     pub dir: PathBuf,
     pub equipe: Equipe,
+    /// None = sem `anthropic_key`: só os comandos
+    pub claude: Option<Claude>,
+    /// a conversa com o modelo (ver `modelo.rs`)
+    pub historico: Vec<Value>,
+    pub ultimo: Option<Instant>,
 }
 
 impl Atendente {
+    pub fn new(tg: Telegram, slug: &str, chat_id: i64, config: Config, dir: PathBuf, equipe: Equipe, claude: Option<Claude>) -> Atendente {
+        Atendente { tg, slug: slug.to_string(), chat_id, config, dir, equipe, claude, historico: vec![], ultimo: None }
+    }
+
     pub fn laco(mut self, rx: Receiver<Value>) {
         if let Err(e) = self.menu() {
             println!("{}: setMyCommands: {e}", self.slug);
@@ -108,7 +117,7 @@ impl Atendente {
 
     fn saudacao(&self) -> String {
         format!(
-            "Oi, {}! Aqui é {}, a secretária da equipe.\n\nPor enquanto só sei /ping e /equipe. Recados e tarefas entre vocês vêm logo.",
+            "Oi, {}! Aqui é {}, a secretária da equipe.\n\nPor enquanto eu mostro as tarefas abertas (\"o que tenho pra fazer?\") e sei /ping e /equipe. Recados e tarefas entre vocês vêm logo.",
             esc(&self.nome()),
             esc(&self.config.assistente)
         )
@@ -143,7 +152,9 @@ impl Atendente {
             "/start" | "/ajuda" => self.saudacao(),
             "/ping" => "🏓 tô aqui".into(),
             "/equipe" => self.texto_equipe(),
-            _ => "Ainda não sei fazer isso: por enquanto só /ping e /equipe.".into(),
+            _ if comando.starts_with('/') => "Não conheço esse comando: tenho /ping, /equipe e /ajuda.".into(),
+            _ if texto.is_empty() => "Por enquanto só leio texto.".into(),
+            _ => self.perguntar(texto)?,
         };
         self.send(&r)?;
         Ok(())

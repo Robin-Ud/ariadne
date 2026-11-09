@@ -42,6 +42,10 @@ Cada membro tem o próprio menu do "/":
 - `/equipe`: quem está na equipe. ✅ pareado, ⏳ convite mandado, ➖ sem convite.
 - `/ajuda`: o que ela faz.
 
+Fora dos comandos, é conversa: o texto vai pro modelo (precisa de `credenciais/anthropic_key`), que
+usa as ferramentas dela. Por enquanto, `ver_tarefas` ("o que tenho pra fazer?", "o que a Fulana
+tem?"). A conversa fica na memória e recomeça depois de `conversa_reset_min` parada.
+
 ## Como funciona
 
 Um processo só faz o `getUpdates`, porque o Telegram não deixa dois processos lerem o mesmo bot. Ele
@@ -68,6 +72,7 @@ sempre ignorado.
 ```
 configs.json
 credenciais/telegram_token          0600
+credenciais/anthropic_key           0600, uma chave pra equipe toda
 membros/<slug>/membro.json          {nome, email}
 membros/<slug>/convite              0600, até a pessoa tocar no link
 membros/<slug>/chat_id              0600, depois

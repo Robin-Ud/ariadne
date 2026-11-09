@@ -163,7 +163,69 @@ fn link_pareia_e_cada_um_tem_o_seu_atendente() {
     r.despacha(&msg(100, "private", "/ping")).unwrap();
     r.despacha(&msg(101, "private", "texto livre")).unwrap();
     let c = espera(&rx, |m, _| m == "sendMessage");
-    assert_eq!((c["chat_id"].as_i64(), c["text"].as_str()), (Some(101), Some("Ainda não sei fazer isso: por enquanto só /ping e /equipe.")));
+    assert_eq!(c["chat_id"].as_i64(), Some(101));
+    assert!(c["text"].as_str().unwrap().contains("Ainda não tenho a chave do modelo"), "{c}");
+}
+
+// --- conversa com o modelo (falso) ---
+
+use crate::falso::claude_falso;
+
+/// Fulana (chat 100) e Beltrano (chat 200) pareados, chave falsa, Telegram falso e o modelo com `respostas`
+fn time_de_teste(respostas: Vec<Value>) -> (TempDir, Roteador, Receiver<(String, Value)>, Receiver<Value>) {
+    let tmp = TempDir::new("ariadne_time.");
+    std::fs::write(tmp.0.join("configs.json"), "{}").unwrap();
+    std::fs::create_dir_all(tmp.0.join("credenciais")).unwrap();
+    std::fs::write(tmp.0.join("credenciais/anthropic_key"), "sk-falsa").unwrap();
+    for (nome, chat) in [("Fulana Souza", 100), ("Beltrano", 200)] {
+        let (m, _) = membros::cadastrar(&tmp.0, nome, None, 0).unwrap();
+        membros::parear(&tmp.0, &m.slug, chat).unwrap();
+    }
+    let (url, rx) = telegram_falso();
+    let mut tg = argos::rede::Telegram::new(argos::rede::agente(), "x");
+    tg.base = url;
+    let mut r = Roteador::new(tmp.0.clone(), config::load_de(&tmp.0).unwrap(), tg).unwrap();
+    let (curl, crx) = claude_falso(respostas);
+    // os atendentes sobem de novo com a URL do modelo falso
+    r.claude_url = Some(curl);
+    r.solta_todos();
+    r.recarrega().unwrap();
+    (tmp, r, rx, crx)
+}
+
+fn usa(id: &str, nome: &str, input: Value) -> Value {
+    json!({"stop_reason": "tool_use", "content": [{"type": "tool_use", "id": id, "name": nome, "input": input}]})
+}
+
+fn diz(texto: &str) -> Value {
+    json!({"stop_reason": "end_turn", "content": [{"type": "text", "text": texto}]})
+}
+
+#[test]
+fn texto_livre_vai_pro_modelo_com_as_ferramentas() {
+    let (_tmp, mut r, rx, crx) = time_de_teste(vec![usa("t1", "ver_tarefas", json!({"filtro": "minhas"})), diz("Nada aberto, Fulana.")]);
+    r.despacha(&msg(100, "private", "o que tenho pra fazer?")).unwrap();
+    espera(&rx, enviado_a(100, "Nada aberto, Fulana."));
+    let p1 = crx.recv().unwrap();
+    let system = p1["system"][0]["text"].as_str().unwrap();
+    assert!(system.contains("- Fulana Souza (`fulana-souza`)") && system.contains("- Beltrano (`beltrano`)"), "{system}");
+    assert!(!system.contains("falando com: Fulana"), "o que muda não vai no system (cache)");
+    let turno = p1["messages"][0]["content"][0]["text"].as_str().unwrap();
+    assert!(turno.contains("[falando com: Fulana Souza (`fulana-souza`)]") && turno.ends_with("\no que tenho pra fazer?"), "{turno}");
+    assert_eq!(p1["messages"][0]["content"][0]["cache_control"]["type"], "ephemeral");
+    assert_eq!(p1["tools"][0]["name"], "ver_tarefas");
+    let p2 = crx.recv().unwrap();
+    assert_eq!(p2["messages"][2]["content"][0], json!({"type": "tool_result", "tool_use_id": "t1", "content": "nenhuma tarefa aberta nesse filtro", "is_error": false, "cache_control": {"type": "ephemeral"}}));
+}
+
+#[test]
+fn ferramenta_com_erro_volta_pro_modelo() {
+    let (_tmp, mut r, rx, crx) = time_de_teste(vec![usa("t1", "ver_tarefas", json!({"filtro": "de:ninguem"})), diz("Não achei essa pessoa.")]);
+    r.despacha(&msg(200, "private", "e o ninguém?")).unwrap();
+    espera(&rx, enviado_a(200, "Não achei essa pessoa."));
+    crx.recv().unwrap();
+    let r2 = &crx.recv().unwrap()["messages"][2]["content"][0];
+    assert_eq!((r2["is_error"].as_bool(), r2["content"].as_str()), (Some(true), Some("ValueError: \"ninguem\" não é da equipe")));
 }
 
 #[test]
