@@ -347,3 +347,105 @@ fn mapa_do_reply_poda_velho_e_excesso() {
     assert_eq!(e.respostas.len(), estado::RESPOSTA_MAX);
     assert!(estado::entrega(&e, 7, 4).is_none() && estado::entrega(&e, 7, 5).is_some() && estado::entrega(&e, 8, 5).is_none());
 }
+
+fn estado_de(dir: &std::path::Path) -> estado::Estado {
+    estado::carregar(&estado::arquivo(dir)).unwrap()
+}
+
+/// resultado da ferramenta no último pedido ao modelo
+fn resultado(p: &Value) -> String {
+    let m = p["messages"].as_array().unwrap();
+    m.last().unwrap()["content"][0]["content"].as_str().unwrap().to_string()
+}
+
+#[test]
+fn delegar_entrega_na_hora_e_concluir_avisa_quem_pediu() {
+    let (tmp, mut r, rx, crx) = time_de_teste(vec![
+        usa("t1", "delegar", json!({"para": "beltrano", "texto": "mandar a <proposta>", "prazo": null})),
+        diz("Mandei pro Beltrano."),
+        usa("t2", "concluir", json!({"id": 1})),
+        diz("Fulana já sabe."),
+    ]);
+    r.despacha(&msg(100, "private", "pede pro Beltrano mandar a proposta")).unwrap();
+    espera(&rx, enviado_a(200, "📌 <b>Fulana</b> te pediu: mandar a &lt;proposta&gt;"));
+    espera(&rx, enviado_a(100, "Mandei pro Beltrano."));
+    crx.recv().unwrap();
+    assert!(resultado(&crx.recv().unwrap()).starts_with("tarefa #1 criada pra Beltrano, que já recebeu; primeira cobrança"));
+    let e = estado_de(&tmp.0);
+    assert_eq!((e.tarefas.len(), estado::de(&e.tarefas[0]), estado::para(&e.tarefas[0]), e.tarefas[0].pendente), (1, "fulana-souza", "beltrano", true));
+    let conversa = std::fs::read_to_string(membros::pasta(&tmp.0).join("beltrano/conversa.jsonl")).unwrap();
+    assert!(conversa.contains("te pediu"), "a entrega vai pra conversa de quem recebe: {conversa}");
+
+    // o Beltrano vê a tarefa no turno dele e conclui
+    r.despacha(&msg(200, "private", "mandei a proposta")).unwrap();
+    espera(&rx, enviado_a(100, "✅ <b>Beltrano</b> concluiu: mandar a &lt;proposta&gt;"));
+    espera(&rx, enviado_a(200, "Fulana já sabe."));
+    let p = crx.recv().unwrap();
+    assert!(p["messages"].as_array().unwrap().last().unwrap()["content"][0]["text"].as_str().unwrap()
+        .contains("[tarefas dele(a): #1 mandar a <proposta> (pediu: Fulana)]"));
+    assert_eq!(resultado(&crx.recv().unwrap()), "#1 fechada; avisei Fulana");
+    assert!(estado_de(&tmp.0).tarefas.is_empty());
+    assert!(std::fs::read_to_string(estado::historico(&tmp.0)).unwrap().contains(r#""status":"feita""#));
+}
+
+#[test]
+fn quem_faz_recusa_e_adia_quem_pediu_cancela() {
+    let futuro = (argos::util::agora() + chrono::Duration::days(2)).format("%Y-%m-%dT10:00").to_string();
+    let (tmp, mut r, rx, crx) = time_de_teste(vec![
+        usa("t1", "delegar", json!({"para": "beltrano", "texto": "a"})),
+        usa("t2", "delegar", json!({"para": "beltrano", "texto": "b"})),
+        usa("t3", "concluir", json!({"id": 1})),
+        diz("ok"),
+        usa("t4", "recusar", json!({"id": 1, "motivo": " "})),
+        usa("t5", "recusar", json!({"id": 1, "motivo": "sem tempo"})),
+        usa("t6", "adiar", json!({"id": 2, "quando": futuro})),
+        usa("t7", "cancelar", json!({"id": 2})),
+        diz("feito"),
+        usa("t8", "cancelar", json!({"id": 2})),
+        diz("cancelada"),
+    ]);
+    r.despacha(&msg(100, "private", "pede a e b pro Beltrano")).unwrap();
+    espera(&rx, enviado_a(100, "ok"));
+    for _ in 0..3 {
+        crx.recv().unwrap();
+    }
+    assert_eq!(resultado(&crx.recv().unwrap()), "ValueError: tarefa #1: só quem faz (Beltrano) conclui, adia ou recusa");
+
+    r.despacha(&msg(200, "private", "recusa a, sem tempo; e deixa b pra depois de amanhã")).unwrap();
+    espera(&rx, enviado_a(100, "❌ <b>Beltrano</b> recusou: a\nMotivo: sem tempo"));
+    let adiou = espera(&rx, enviado_a(100, "🕒 <b>Beltrano</b> deixou pra"));
+    assert!(adiou["text"].as_str().unwrap().ends_with(": b"));
+    espera(&rx, enviado_a(200, "feito"));
+    crx.recv().unwrap();
+    assert_eq!(resultado(&crx.recv().unwrap()), "ValueError: recusar precisa do motivo: pergunte");
+    for _ in 0..2 {
+        crx.recv().unwrap();
+    }
+    assert_eq!(resultado(&crx.recv().unwrap()), "ValueError: tarefa #2: só quem pediu (Fulana) cancela");
+    let e = estado_de(&tmp.0);
+    assert_eq!(e.tarefas.iter().map(|t| t.id).collect::<Vec<_>>(), [2]);
+    assert!(e.tarefas[0].cobrar_em.as_deref().unwrap().starts_with(&futuro[..13]), "{:?}", e.tarefas[0].cobrar_em);
+
+    r.despacha(&msg(100, "private", "cancela a b")).unwrap();
+    espera(&rx, enviado_a(200, "🚫 <b>Fulana</b> cancelou: b"));
+    espera(&rx, enviado_a(100, "cancelada"));
+    assert!(estado_de(&tmp.0).tarefas.is_empty());
+}
+
+#[test]
+fn lembrete_pessoal_nao_avisa_ninguem() {
+    let (tmp, mut r, rx, crx) = time_de_teste(vec![
+        usa("t1", "delegar", json!({"para": "eu", "texto": "ligar pro contador", "prazo": "2099-01-05"})),
+        usa("t2", "recusar", json!({"id": 1, "motivo": "x"})),
+        usa("t3", "concluir", json!({"id": 1})),
+        diz("pronto"),
+    ]);
+    r.despacha(&msg(100, "private", "me lembra de ligar pro contador")).unwrap();
+    let c = espera(&rx, |m, c| m == "sendMessage" && c["text"] != "");
+    assert_eq!((c["chat_id"].as_i64(), c["text"].as_str()), (Some(100), Some("pronto")), "só a resposta, pra ela mesma");
+    crx.recv().unwrap();
+    assert!(resultado(&crx.recv().unwrap()).starts_with("lembrete #1 criado; aviso segunda 05/01 09:00"));
+    assert_eq!(resultado(&crx.recv().unwrap()), "ValueError: tarefa #1: lembrete pessoal não se recusa: cancele");
+    assert_eq!(resultado(&crx.recv().unwrap()), "#1 fechada");
+    assert!(estado_de(&tmp.0).tarefas.is_empty());
+}

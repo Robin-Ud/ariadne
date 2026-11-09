@@ -110,6 +110,20 @@ impl Atendente {
         self.tg.send(self.chat_id, texto, None, true)
     }
 
+    /// manda pro chat de um membro (eu também) e grava no `conversa.jsonl` dele. Devolve o `message_id`;
+    /// None = ele ainda não tocou no link do convite
+    pub fn envia_para(&mut self, slug: &str, texto: &str, teclado: Option<Value>) -> R<Option<i64>> {
+        let chat = if slug == self.slug { Some(self.chat_id) } else { trava(&self.equipe).membro(slug).and_then(|m| m.chat_id) };
+        let Some(chat) = chat else { return Ok(None) };
+        let meu = self.tg.conversa.clone();
+        if slug != self.slug {
+            self.tg.conversa = Some(membros::pasta(&self.dir).join(slug).join("conversa.jsonl"));
+        }
+        let r = self.tg.send(chat, texto, teclado, true);
+        self.tg.conversa = meu;
+        Ok(r?.get("message_id").and_then(Value::as_i64))
+    }
+
     /// primeiro nome deste membro
     fn nome(&self) -> String {
         trava(&self.equipe).primeiro_nome(&self.slug)
@@ -117,7 +131,7 @@ impl Atendente {
 
     fn saudacao(&self) -> String {
         format!(
-            "Oi, {}! Aqui é {}, a secretária da equipe.\n\nPor enquanto eu mostro as tarefas abertas (\"o que tenho pra fazer?\") e sei /ping e /equipe. Recados e tarefas entre vocês vêm logo.",
+            "Oi, {}! Aqui é {}, a secretária da equipe.\n\nMe fala do jeito que falaria com uma pessoa:\n• \"pede pro Fulano mandar a proposta até sexta\"\n• \"me lembra de ligar pro contador amanhã\"\n• \"o que tenho pra fazer?\", \"o que eu pedi?\"\n\nQuem recebe uma tarefa é cobrado até concluir, adiar ou recusar, e quem pediu fica sabendo.",
             esc(&self.nome()),
             esc(&self.config.assistente)
         )

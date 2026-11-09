@@ -9,8 +9,8 @@ tocam num link. Ninguém mais precisa criar bot nem fazer login no Google.
 Usa o [Argos](https://github.com/Robin-Ud/argos) como biblioteca. O plano completo está no
 [`PLANO.md`](PLANO.md).
 
-> **Estado:** fase 0 (esqueleto: entrada por link, um atendente por membro, `/ping`). Recados e
-> tarefas vêm na fase 1.
+> **Estado:** fase 1 em andamento: tarefas entre membros e lembretes pessoais. Os botões, a
+> cobrança e os recados vêm em seguida.
 
 ## Pôr no ar
 
@@ -43,8 +43,19 @@ Cada membro tem o próprio menu do "/":
 - `/ajuda`: o que ela faz.
 
 Fora dos comandos, é conversa: o texto vai pro modelo (precisa de `credenciais/anthropic_key`), que
-usa as ferramentas dela. Por enquanto, `ver_tarefas` ("o que tenho pra fazer?", "o que a Fulana
-tem?"). A conversa fica na memória e recomeça depois de `conversa_reset_min` parada.
+usa as ferramentas dela. A conversa fica na memória e recomeça depois de `conversa_reset_min` parada.
+
+## Tarefas
+
+- **Delegar:** "pede pro Fulano mandar a proposta até sexta". O Fulano recebe na hora ("📌 Beltrana
+  te pediu: …").
+- **Lembrete pessoal:** "me lembra de ligar pro contador amanhã". Só quem pediu vê.
+- **Ver:** "o que tenho pra fazer?", "o que eu pedi?", "o que a equipe tem?", "o que o Fulano tem?".
+- **Fechar:** quem faz conclui, adia ou recusa (com motivo), e quem pediu recebe o aviso. Quem pediu
+  pode cancelar, e quem ia fazer recebe o aviso.
+
+Tarefa sem prazo já começa a ser cobrada, uma espera (`cobrar_a_cada_h`) depois, dentro da
+`janela_cobranca`. Com prazo, o aviso sai no prazo (só o dia = às 09:00).
 
 ## Como funciona
 

@@ -35,18 +35,46 @@ Jeito:\n\
 - Lembra e avisa do que está parado, mas não decide prioridade por ninguém.\n\
 - Não invente tarefa, prazo nem membro. Se faltar o quem ou o quê, pergunte.\n\
 - Cada mensagem começa com [agora: …], [falando com: …] e as tarefas abertas de quem fala: use isso, não pergunte de novo.\n\
-- A resposta vai como HTML do Telegram: <b>, <i>, <code>; nada de Markdown.\n",
+- A resposta vai como HTML do Telegram: <b>, <i>, <code>; nada de Markdown.\n\n\
+Tarefas:\n\
+- \"Pede pro Fulano…\", \"o Fulano precisa…\" → delegar com para = o id dele. \"Me lembra de…\" → delegar com para = eu (lembrete pessoal).\n\
+- Sem prazo, a tarefa já começa a ser cobrada (espaçado, só em horário de trabalho). Com prazo, o aviso sai no prazo.\n\
+- Prazo e quando: AAAA-MM-DD (vale às 09:00) ou AAAA-MM-DDTHH:MM, calculado pelo [agora] e pelos próximos dias da mensagem.\n\
+- Quem faz conclui, adia ou recusa (recusar pede o motivo: pergunte se não veio). Quem pediu cancela. Use o #id que vem nas tarefas.\n\
+- Cada ação já avisa o outro lado sozinha: não diga que vai avisar, diga que avisou (o resultado da ferramenta conta).\n",
         equipe.join("\n")
     )
 }
 
-pub fn ferramentas(_membros: &[Membro]) -> Value {
+/// `para` das ferramentas: os ids dos membros, mais `eu`
+fn enum_para(membros: &[Membro]) -> Value {
+    let mut v: Vec<Value> = membros.iter().map(|m| json!(m.slug)).collect();
+    v.push(json!("eu"));
+    Value::Array(v)
+}
+
+pub fn ferramentas(membros: &[Membro]) -> Value {
+    let id = json!({"type": "integer", "description": "o #id da tarefa"});
     let filtro = "minhas (o que quem fala tem que fazer), pedi (o que pediu pros outros), equipe (tudo da equipe, menos lembrete pessoal dos outros) ou de:<id> (o que aquele membro tem que fazer)";
     json!([
         {"name": "ver_tarefas", "description": "Lista as tarefas abertas, com id, quem pediu, quem faz, prazo e cobranças sem resposta.",
          "input_schema": {"type": "object", "properties": {
              "filtro": {"type": "string", "description": filtro}},
           "required": ["filtro"]}},
+        {"name": "delegar", "description": "Cria uma tarefa pra um membro (ele recebe na hora) ou um lembrete pessoal (para = eu).",
+         "input_schema": {"type": "object", "properties": {
+             "para": {"type": "string", "enum": enum_para(membros), "description": "id de quem faz; eu = quem está falando"},
+             "texto": {"type": "string", "description": "o que fazer, curto e no infinitivo, como quem pediu falaria"},
+             "prazo": {"type": ["string", "null"], "description": "AAAA-MM-DD ou AAAA-MM-DDTHH:MM; null = sem prazo (já cobra)"}},
+          "required": ["para", "texto"]}},
+        {"name": "concluir", "description": "Quem faz marca a tarefa como feita; quem pediu é avisado.",
+         "input_schema": {"type": "object", "properties": {"id": id}, "required": ["id"]}},
+        {"name": "adiar", "description": "Quem faz deixa a tarefa pra depois: a próxima cobrança (ou o aviso, se ainda não venceu) vai pro quando; quem pediu é avisado.",
+         "input_schema": {"type": "object", "properties": {"id": id, "quando": {"type": "string", "description": "AAAA-MM-DD ou AAAA-MM-DDTHH:MM"}}, "required": ["id", "quando"]}},
+        {"name": "recusar", "description": "Quem faz recusa a tarefa, com o motivo; quem pediu recebe o motivo.",
+         "input_schema": {"type": "object", "properties": {"id": id, "motivo": {"type": "string"}}, "required": ["id", "motivo"]}},
+        {"name": "cancelar", "description": "Quem pediu cancela a tarefa (ou o próprio lembrete); quem ia fazer é avisado.",
+         "input_schema": {"type": "object", "properties": {"id": id}, "required": ["id"]}},
     ])
 }
 
