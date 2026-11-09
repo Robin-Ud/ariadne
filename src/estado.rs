@@ -126,6 +126,32 @@ pub fn pessoal(t: &Tarefa) -> bool {
     de(t) == para(t)
 }
 
+/// pedida pelo chefe pra outra pessoa: chega com ⭐ e é cobrada todo dia, sem espaçar
+pub fn do_chefe(t: &Tarefa) -> bool {
+    t.resto.get("do_chefe") == Some(&Value::Bool(true))
+}
+
+pub fn marca_do_chefe(t: &mut Tarefa) {
+    t.resto.insert("do_chefe".into(), json!(true));
+}
+
+/// as regras de cobrança desta tarefa: a do chefe não espaça (fator 1), o resto é o da equipe
+pub fn cfg_de(mut cfg: CfgCobranca, t: &Tarefa) -> CfgCobranca {
+    if do_chefe(t) {
+        cfg.fator = 1.0;
+    }
+    cfg
+}
+
+/// "⭐ texto" no pedido do chefe
+pub fn titulo(t: &Tarefa) -> String {
+    if do_chefe(t) {
+        format!("⭐ {}", t.texto)
+    } else {
+        t.texto.clone()
+    }
+}
+
 pub fn prazo(t: &Tarefa) -> Option<Dt> {
     t.resto.get("prazo").and_then(Value::as_str).and_then(|s| from_iso(s).ok())
 }

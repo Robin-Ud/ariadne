@@ -87,6 +87,14 @@ Concluir, adiar ou recusar para tudo. São as regras de tempo do Argos.
 Depois de `escalar_apos` cobranças sem resposta, quem pediu recebe "⚠️ Fulano não respondeu 3
 cobranças de …", uma vez só. A cobrança continua.
 
+## Chefe
+
+Quem tem `"chefe": true` no `membro.json` (`--membro "Nome" --chefe`):
+
+- **Pedido em destaque:** a tarefa que ele pede pra alguém chega como "📌 Fulano (chefe) te pediu: ⭐
+  …" e é cobrada todo dia no mesmo horário, sem espaçar (ainda no máximo uma por dia). O escalar
+  depois de `escalar_apos` vale igual.
+
 ## Como funciona
 
 Um processo só faz o `getUpdates`, porque o Telegram não deixa dois processos lerem o mesmo bot. Ele

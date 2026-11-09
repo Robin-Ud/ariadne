@@ -116,6 +116,9 @@ pub fn linha_tarefa(t: &Tarefa, nome: impl Fn(&str) -> String, eu: &str) -> Stri
     } else {
         notas.push("lembrete pessoal".into());
     }
+    if estado::do_chefe(t) {
+        notas.push("⭐ pedido do chefe".into());
+    }
     if let Some(p) = estado::prazo(t) {
         notas.push(format!("até {}", fmt_when(&argos::util::iso(&p)).unwrap_or_default()));
     }

@@ -636,3 +636,40 @@ fn chefe_fica_no_membro_json_e_no_prompt() {
     let system = crate::modelo::system(&config::Config::default(), &v);
     assert!(system.contains("- Chefia (`chefia`), o chefe\n- Fulana (`fulana`)\n"), "{system}");
 }
+
+#[test]
+fn pedido_do_chefe_chega_em_destaque_e_cobra_todo_dia() {
+    let (tmp, mut r, rx, crx) = time_de_teste(vec![
+        usa("t1", "delegar", json!({"para": "beltrano", "texto": "fechar o orçamento"})),
+        diz("Mandei."),
+        usa("t2", "delegar", json!({"para": "fulana-souza", "texto": "assinar o contrato"})),
+        diz("Mandei pra Fulana."),
+    ]);
+    membros::marcar_chefe(&tmp.0, "fulana-souza", true).unwrap();
+    r.recarrega().unwrap();
+    r.despacha(&msg(100, "private", "pede pro Beltrano fechar o orçamento")).unwrap();
+    espera(&rx, enviado_a(200, "📌 <b>Fulana (chefe)</b> te pediu: ⭐ fechar o orçamento"));
+    espera(&rx, enviado_a(100, "Mandei."));
+    for _ in 0..2 {
+        crx.recv().unwrap();
+    }
+    // o pedido que vai pro chefe não ganha destaque
+    r.despacha(&msg(200, "private", "pede pra Fulana assinar o contrato")).unwrap();
+    espera(&rx, enviado_a(100, "📌 <b>Beltrano</b> te pediu: assinar o contrato"));
+    espera(&rx, enviado_a(200, "Mandei pra Fulana."));
+    let e = estado_de(&tmp.0);
+    assert!(estado::do_chefe(&e.tarefas[0]) && !estado::do_chefe(&e.tarefas[1]));
+
+    let mut b = atendente_de(&r, "beltrano", 200);
+    let mut horas = vec![];
+    for _ in 0..4 {
+        let quando = estado_de(&tmp.0).tarefas[0].cobrar_em.clone().unwrap();
+        b.tick_em(&dt(&quando)).unwrap();
+        espera(&rx, enviado_a(200, "🔔 ⭐ fechar o orçamento (pedido de Fulana"));
+        horas.push(dt(&quando));
+    }
+    for par in horas.windows(2) {
+        assert_eq!(par[1] - par[0], chrono::Duration::hours(24), "chefe: todo dia, sem espaçar");
+    }
+    assert_eq!(argos::tarefas::sem_resposta(&estado_de(&tmp.0).tarefas[0]), 4);
+}

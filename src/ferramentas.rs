@@ -75,9 +75,16 @@ impl Atendente {
             if eq.membro(&para).is_none() {
                 return Err(Erro::Valor(format!("{para:?} não é da equipe")));
             }
-            let t = estado::nova_tarefa(&mut eq.estado, &self.slug, &para, &texto, prazo, &now, &self.config.cfg_cobranca())?;
+            let mut t = estado::nova_tarefa(&mut eq.estado, &self.slug, &para, &texto, prazo, &now, &self.config.cfg_cobranca())?;
+            if para != self.slug && eq.membro(&self.slug).is_some_and(|m| m.chefe) {
+                estado::marca_do_chefe(&mut t);
+                if let Some(x) = eq.estado.tarefas.iter_mut().find(|x| x.id == t.id) {
+                    *x = t.clone();
+                }
+            }
             eq.gravar()?;
-            (t, eq.primeiro_nome(&self.slug), eq.primeiro_nome(&para))
+            let eu = if estado::do_chefe(&t) { format!("{} (chefe)", eq.primeiro_nome(&self.slug)) } else { eq.primeiro_nome(&self.slug) };
+            (t, eu, eq.primeiro_nome(&para))
         };
         let quando = |t: &Tarefa| match t.cobrar_em.as_deref() {
             Some(c) => format!("primeira cobrança {}", fmt_when(c).unwrap_or_default()),
@@ -86,7 +93,7 @@ impl Atendente {
         if para == self.slug {
             return Ok(format!("lembrete #{} criado; {}", t.id, quando(&t)));
         }
-        let msg = format!("📌 <b>{}</b> te pediu: {}{}", esc(&eu), esc(&t.texto), esc(&nota_prazo(&t)));
+        let msg = format!("📌 <b>{}</b> te pediu: {}{}", esc(&eu), esc(&estado::titulo(&t)), esc(&nota_prazo(&t)));
         Ok(match self.envia_para(&para, &msg, Some(teclado(t.id, false)))? {
             Some(_) => format!("tarefa #{} criada pra {nome_para}, que já recebeu; {}", t.id, quando(&t)),
             None => format!("tarefa #{} criada, mas {nome_para} ainda não entrou no Telegram comigo (não tocou no link do convite): não foi avisado", t.id),
