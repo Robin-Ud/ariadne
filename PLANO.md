@@ -153,26 +153,26 @@ dá pra usar sozinha.
    🙋 eu pego, fechamento da semana.
 5. Ponte com o Argos pessoal.
 
-## v1 (próximo passo, 09/11/2026)
+## v1 (09/11/2026)
 
-v1 = fase 1 + no ar na VM. Hoje (fase 0) ela tem roteador, convite, `/ping` e `/equipe`.
+v1 = fase 1 + no ar na VM. **O código da fase 1 está pronto** e testado contra o Telegram e o modelo
+falsos: `delegar`, `recado` (na hora ou agendado), `ver_tarefas`, `concluir`/`adiar`/`recusar`/
+`cancelar`, botões ✅/🕒/❌ sem modelo, aviso de volta, cobrança espaçada, escalar depois de 3 e
+reply a recado.
 
-Fase 1:
-1. Estado da equipe (`dados/estado.json`, lock, tmp + rename). A tarefa é a `argos::tarefas::Tarefa`
-   com `de`/`para` no `resto`: `espera`, `encaixe` e `proximo_permitido` servem sem mexer no argos.
-2. Laço com o modelo próprio, sobre `Claude::create` (o `agenda_ask` do argos é preso ao `Bot`):
-   persona, histórico por membro, cache, `log_uso`. É a peça maior.
-3. Ferramentas `delegar`, `recado` (na hora ou com `quando`), `ver_tarefas`, `concluir`/`adiar`/`recusar`.
-4. Entrega com ✅/🕒/❌ e aviso de volta pra quem pediu (com o motivo na recusa).
-5. `tick`: cobrança espaçada, recado agendado, escalar depois de 3 sem resposta.
-6. Reply a um recado → resposta pra quem mandou.
-7. Testes com o Telegram falso e o modelo simulado.
+Decisões tomadas no caminho:
+- A tarefa é a `argos::tarefas::Tarefa` com `de`/`para`/`prazo` no `resto`. Fechada (feita,
+  recusada, cancelada) sai do estado e vai pro `dados/historico.jsonl`.
+- Sem `para: alguem` (🙋 fica pra fase 4) e sem tarefa que repete.
+- O histórico do modelo fica na memória da thread (zera com `conversa_reset_min` parado ou 40
+  mensagens). Quem fala e as tarefas dele vão no turno; tools e system são iguais pra todos (cache).
+- O recado agendado sai no `tick` de quem recebe: cada thread só manda agendado pro próprio chat.
+- O link "📅 Salvar na agenda" fica pra fase 2.
 
-No ar: `anthropic_key` da equipe, `build-ol9.sh` (como o do argos), usuário + pasta + unit do systemd
-na VM (sudo é do Matheus), convites gerados lá.
+Falta pôr no ar: bot no BotFather, `anthropic_key` da equipe, o `build-ol9.sh` e, na VM (sudo é do
+Matheus), usuário, pasta, unit do systemd (`exemplos/ariadne.service`) e os convites gerados lá.
 
-Pra decidir: o link "📅 Salvar na agenda" (sem login) entra na v1? Se a viagem é o que o patrão
-espera, a fase 3 vem antes da 2?
+Pra decidir: se a viagem é o que o patrão espera, a fase 3 vem antes da 2?
 
 ## Em aberto
 

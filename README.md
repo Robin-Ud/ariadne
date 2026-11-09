@@ -39,7 +39,7 @@ Precisa do `../argos` ao lado. Lá, o binário vai pra `/usr/local/bin/` e o ser
 [`exemplos/ariadne.service`](exemplos/ariadne.service), trocando `SEU_USUARIO`.
 
 `ariadne --selftest` sobe 3 membros numa pasta temporária contra um Telegram falso local, manda 600
-mensagens e imprime o pico de memória (VmHWM; na fase 0, ~5 MB).
+mensagens e imprime o pico de memória (VmHWM no release: ~5,5 MB).
 
 ## Comandos
 
