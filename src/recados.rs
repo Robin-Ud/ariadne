@@ -6,7 +6,7 @@ use crate::atendente::{trava, Atendente};
 use crate::estado::{self, Entregue, RecadoAgendado};
 use argos::rascunho::esc;
 use argos::tarefas::fmt_when;
-use argos::util::{agora, arg, arg_str, from_iso, iso, Dt, Erro, R};
+use argos::util::{agora, arg, arg_str, corta, from_iso, iso, Dt, Erro, R};
 use serde_json::{Map, Value};
 
 /// recado agendado que ninguém pôde receber (não pareou) some depois de tantos dias
@@ -85,6 +85,24 @@ impl Atendente {
             r += &format!("; {} ainda não entrou no Telegram comigo, não recebeu", nomes(self, &nao));
         }
         Ok(r)
+    }
+
+    /// reply a um recado entregue neste chat: a resposta vai pra quem mandou. None = não é reply a recado
+    pub fn responde_recado(&mut self, message_id: i64, texto: &str) -> R<Option<String>> {
+        if texto.is_empty() || texto.starts_with('/') {
+            return Ok(None);
+        }
+        let (ent, eu, nome_de) = {
+            let eq = trava(&self.equipe);
+            let Some(ent) = estado::entrega(&eq.estado, self.chat_id, message_id).cloned() else { return Ok(None) };
+            let nome_de = eq.primeiro_nome(&ent.de);
+            (ent, eq.primeiro_nome(&self.slug), nome_de)
+        };
+        let msg = format!("↩️ <b>{}</b> respondeu ao seu recado \"{}\":\n{}", esc(&eu), esc(&corta(&ent.texto, 80)), esc(texto));
+        Ok(Some(match self.envia_para(&ent.de, &msg, None)? {
+            Some(_) => format!("Mandei pra {nome_de}."),
+            None => format!("{nome_de} não está mais no Telegram comigo, não deu pra mandar."),
+        }))
     }
 
     /// recados agendados pra mim cuja hora chegou; e a faxina dos que ninguém pôde receber

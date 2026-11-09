@@ -170,6 +170,12 @@ impl Atendente {
             self.send(&r)?;
             return Ok(());
         }
+        if let Some(id) = u.pointer("/message/reply_to_message/message_id").and_then(Value::as_i64) {
+            if let Some(r) = self.responde_recado(id, texto)? {
+                self.send(&r)?;
+                return Ok(());
+            }
+        }
         let comando = texto.split_whitespace().next().unwrap_or_default();
         let comando = comando.split('@').next().unwrap_or_default();
         let r = match comando {

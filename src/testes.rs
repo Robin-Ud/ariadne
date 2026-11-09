@@ -597,3 +597,20 @@ fn cobra_espacado_na_janela_e_escala_uma_vez() {
     assert_eq!(horas[..3], ["11-09T13:00", "11-09T17:30", "11-10T08:00"]);
     nada(&rx, 300, |c| c["chat_id"] == 100);
 }
+
+#[test]
+fn reply_a_recado_volta_pra_quem_mandou() {
+    let (_tmp, mut r, rx, _crx) = time_de_teste(vec![usa("t1", "recado", json!({"para": ["beltrano"], "texto": "chego 10h"})), diz("Avisei.")]);
+    r.despacha(&msg(100, "private", "avisa o Beltrano que chego 10h")).unwrap();
+    espera(&rx, enviado_a(200, "💬 <b>Fulana</b>: chego 10h"));
+    espera(&rx, enviado_a(100, "Avisei."));
+    let id = crate::atendente::trava(&r.equipe).estado.respostas[0].message_id;
+    let reply = |de_qual: i64, texto: &str| json!({"update_id": 2, "message": {"message_id": 70, "from": {"id": 200}, "chat": {"id": 200, "type": "private"},
+        "text": texto, "reply_to_message": {"message_id": de_qual}}});
+    r.despacha(&reply(id, "beleza, te espero")).unwrap();
+    espera(&rx, enviado_a(100, "↩️ <b>Beltrano</b> respondeu ao seu recado \"chego 10h\":\nbeleza, te espero"));
+    espera(&rx, enviado_a(200, "Mandei pra Fulana."));
+    // reply a outra mensagem dela não é recado: vai pro modelo, que aqui já não tem resposta (💥)
+    r.despacha(&reply(id + 1000, "e aí?")).unwrap();
+    espera(&rx, enviado_a(200, "💥 erro"));
+}

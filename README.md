@@ -9,8 +9,8 @@ tocam num link. Ninguém mais precisa criar bot nem fazer login no Google.
 Usa o [Argos](https://github.com/Robin-Ud/argos) como biblioteca. O plano completo está no
 [`PLANO.md`](PLANO.md).
 
-> **Estado:** fase 1 em andamento: tarefas entre membros, lembretes pessoais, botões, cobrança e
-> recados. Falta responder a recado.
+> **Estado:** fase 1 (tarefas entre membros, lembretes pessoais, cobrança e recados) pronta no
+> código, testada contra o Telegram e o modelo falsos. Falta pôr no ar.
 
 ## Pôr no ar
 
@@ -62,6 +62,9 @@ usa as ferramentas dela. A conversa fica na memória e recomeça depois de `conv
 "Avisa o Fulano que chego 10h", "fala pra todo mundo que amanhã não tem reunião". Sai na hora
 ("💬 Beltrana: chego 10h") ou, com hora ("amanhã às 8 avisa…"), fica agendado e sai às 8. Recado
 não é tarefa: ninguém é cobrado. Agendado pra quem nunca entrou some depois de 7 dias.
+
+Pra responder, é só responder (reply) à mensagem do recado: a resposta vai direto pra quem mandou
+("↩️ Beltrano respondeu ao seu recado …"), sem passar pelo modelo. Vale por 7 dias.
 
 ## Cobrança
 
