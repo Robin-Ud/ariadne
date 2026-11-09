@@ -70,8 +70,14 @@ fn cli_checar_config() -> R<()> {
         };
         println!("  {} ({}): {estado}{}", m.nome, m.slug, m.email.as_deref().map(|e| format!(" · {e}")).unwrap_or_default());
     }
-    if c.credencial("anthropic_key").is_err() {
-        println!("anthropic_key: falta (só precisa a partir dos recados e tarefas)");
+    // a chave passa? count_tokens é de graça
+    let arq = Path::new(&c.cred_dir).join("anthropic_key");
+    match argos::rede::Claude::de_arquivo(agente(), &arq) {
+        Err(_) => println!("anthropic_key: falta (sem ela, só /ping e /equipe; nada de tarefa nem recado)"),
+        Ok(claude) => {
+            claude.checar_chave(&c.modelo)?;
+            println!("anthropic_key: ok ({})", c.modelo);
+        }
     }
     println!("ok");
     Ok(())
