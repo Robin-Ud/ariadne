@@ -94,6 +94,9 @@ Quem tem `"chefe": true` no `membro.json` (`--membro "Nome" --chefe`):
 - **Pedido em destaque:** a tarefa que ele pede pra alguém chega como "📌 Fulano (chefe) te pediu: ⭐
   …" e é cobrada todo dia no mesmo horário, sem espaçar (ainda no máximo uma por dia). O escalar
   depois de `escalar_apos` vale igual.
+- **Resumo quinzenal:** sexta às 17h, a cada 14 dias, só pra ele. Sai sem modelo: quantas cada um
+  concluiu, as recusadas com o motivo, as canceladas, e o que está aberto por pessoa, com o que
+  está atrasado e o que tem 2+ cobranças sem resposta. Lembrete pessoal dos outros não entra.
 
 ## Como funciona
 
@@ -114,6 +117,9 @@ sempre ignorado.
 | `cobrar_a_cada_h` | `24` | horas entre cobranças (24 = no máximo uma por dia); sem resposta, espaça 1,5× até 72 h |
 | `janela_cobranca` | `["08:00", "20:00"]` | cobrança só sai entre essas horas |
 | `escalar_apos` | `3` | depois de tantas cobranças sem resposta, avisa quem pediu (uma vez) |
+| `resumo_dia` | `"sexta"` | dia do resumo do chefe (segunda…domingo) |
+| `resumo_hora` | `"17:00"` | hora do resumo |
+| `resumo_a_cada_dias` | `14` | período do resumo (7, 14, 21…) |
 | `conversa_reset_min` | `30` | a conversa com o modelo recomeça depois de tanto tempo parada |
 
 ## Pastas

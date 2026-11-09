@@ -9,6 +9,7 @@ pub mod ferramentas;
 pub mod membros;
 pub mod modelo;
 pub mod recados;
+pub mod resumo;
 pub mod roteador;
 
 #[cfg(test)]

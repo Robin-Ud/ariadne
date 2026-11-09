@@ -190,7 +190,7 @@ impl Atendente {
         Ok(())
     }
 
-    /// avisos sem mensagem: cobranças e recados agendados
+    /// avisos sem mensagem: cobranças, recados agendados e o resumo do chefe
     pub fn tick(&mut self) -> R<()> {
         self.tick_em(&argos::util::agora())
     }
@@ -198,7 +198,8 @@ impl Atendente {
     /// o `tick` com o relógio de fora (os testes andam com ele)
     pub fn tick_em(&mut self, now: &argos::util::Dt) -> R<()> {
         self.cobra(now)?;
-        self.entrega_recados(now)
+        self.entrega_recados(now)?;
+        self.resumo(now)
     }
 
     /// As tarefas que eu faço, pelo relógio do Argos (`task_tick`): ⏰ no prazo, 🔔 na cobrança espaçada.

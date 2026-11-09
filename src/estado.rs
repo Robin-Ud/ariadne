@@ -25,6 +25,9 @@ pub struct Estado {
     pub recados: Vec<RecadoAgendado>,
     #[serde(default)]
     pub respostas: Vec<Entregue>,
+    /// último resumo de cada chefe (slug → quando saiu)
+    #[serde(default, skip_serializing_if = "Map::is_empty")]
+    pub resumos: Map<String, Value>,
     /// id da próxima tarefa ou recado (o mesmo contador)
     #[serde(default = "um")]
     pub proximo_id: i64,
@@ -38,7 +41,7 @@ fn um() -> i64 {
 
 impl Default for Estado {
     fn default() -> Estado {
-        Estado { tarefas: vec![], recados: vec![], respostas: vec![], proximo_id: 1, resto: Map::new() }
+        Estado { tarefas: vec![], recados: vec![], respostas: vec![], resumos: Map::new(), proximo_id: 1, resto: Map::new() }
     }
 }
 

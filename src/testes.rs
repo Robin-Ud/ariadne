@@ -673,3 +673,50 @@ fn pedido_do_chefe_chega_em_destaque_e_cobra_todo_dia() {
     }
     assert_eq!(argos::tarefas::sem_resposta(&estado_de(&tmp.0).tarefas[0]), 4);
 }
+
+#[test]
+fn resumo_quinzenal_so_pro_chefe() {
+    let (tmp, mut r, rx, _crx) = time_de_teste(vec![]);
+    membros::marcar_chefe(&tmp.0, "fulana-souza", true).unwrap();
+    r.recarrega().unwrap();
+    let cfg = r.config.cfg_cobranca();
+    {
+        let mut eq = crate::atendente::trava(&r.equipe);
+        let hist = estado::historico(&tmp.0);
+        let criada = dt("2026-10-01T10:00:00-03:00");
+        let e = &mut eq.estado;
+        for (de, para, texto, prazo) in [
+            ("fulana-souza", "beltrano", "proposta", None),
+            ("fulana-souza", "beltrano", "planilha", None),
+            ("fulana-souza", "beltrano", "velha", None),
+            ("beltrano", "beltrano", "dentista", None),
+            ("fulana-souza", "beltrano", "relatório", Some(dt("2026-11-12T09:00:00-03:00"))),
+            ("beltrano", "fulana-souza", "assinar <contrato>", None),
+        ] {
+            estado::nova_tarefa(e, de, para, texto, prazo, &criada, &cfg).unwrap();
+        }
+        estado::fechar(e, 1, Fecho::Feita, None, &dt("2026-11-10T10:00:00-03:00"), &hist).unwrap();
+        estado::fechar(e, 2, Fecho::Recusada, Some("sem dados"), &dt("2026-11-11T10:00:00-03:00"), &hist).unwrap();
+        estado::fechar(e, 3, Fecho::Feita, None, &dt("2026-10-02T10:00:00-03:00"), &hist).unwrap();
+        eq.gravar().unwrap();
+    }
+    let mut f = atendente_de(&r, "fulana-souza", 100);
+    let mut b = atendente_de(&r, "beltrano", 200);
+    let resumo = |c: &Value| c["text"].as_str().unwrap_or_default().contains("Resumo");
+
+    f.tick_em(&dt("2026-11-13T16:59:00-03:00")).unwrap();
+    b.tick_em(&dt("2026-11-13T17:00:00-03:00")).unwrap();
+    nada(&rx, 200, resumo);
+    f.tick_em(&dt("2026-11-13T17:00:00-03:00")).unwrap();
+    let t = espera(&rx, enviado_a(100, "📊 <b>Resumo dos últimos 14 dias</b> (30/10 a 13/11)"))["text"].as_str().unwrap().to_string();
+    assert!(t.contains("✅ <b>Concluídas: 1</b>\n• Beltrano: 1\n"), "a velha (02/10) fica de fora: {t}");
+    assert!(t.contains("❌ <b>Recusadas: 1</b>\n• Beltrano: planilha (sem dados)"), "{t}");
+    assert!(t.ends_with("📋 <b>Abertas: 2</b>\n<b>Beltrano</b>\n• #5 relatório · ⚠️ atrasada (era quinta 12/11 09:00)\n<b>Fulana</b>\n• #6 assinar &lt;contrato&gt; · pediu: Beltrano"), "{t}");
+    assert!(!t.contains("dentista"), "lembrete pessoal dos outros não entra: {t}");
+
+    f.tick_em(&dt("2026-11-13T18:00:00-03:00")).unwrap();
+    f.tick_em(&dt("2026-11-20T17:00:00-03:00")).unwrap();
+    nada(&rx, 200, resumo);
+    f.tick_em(&dt("2026-11-27T17:00:00-03:00")).unwrap();
+    espera(&rx, enviado_a(100, "📊 <b>Resumo dos últimos 14 dias</b> (13/11 a 27/11)"));
+}

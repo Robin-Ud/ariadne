@@ -24,6 +24,10 @@ pub struct Config {
     pub escalar_apos: i64,
     /// a conversa com o modelo recomeça depois de tantos minutos parada
     pub conversa_reset_min: f64,
+    /// resumo pro chefe: dia da semana ("sexta"), hora ("17:00") e a cada quantos dias (múltiplo de 7)
+    pub resumo_dia: String,
+    pub resumo_hora: String,
+    pub resumo_a_cada_dias: i64,
 }
 
 impl Default for Config {
@@ -38,6 +42,9 @@ impl Default for Config {
             janela_cobranca: ("08:00".into(), "20:00".into()),
             escalar_apos: 3,
             conversa_reset_min: 30.0,
+            resumo_dia: "sexta".into(),
+            resumo_hora: "17:00".into(),
+            resumo_a_cada_dias: 14,
         }
     }
 }
@@ -82,6 +89,9 @@ pub fn load_de(dir: &Path) -> R<Config> {
     let hora = |h: &str| chrono::NaiveTime::parse_from_str(h, "%H:%M").is_ok();
     if !hora(&c.janela_cobranca.0) || !hora(&c.janela_cobranca.1) || c.janela_cobranca.0 >= c.janela_cobranca.1 {
         return Err(Erro::Msg(format!("{}: janela_cobranca {:?} (use [\"08:00\", \"20:00\"])", arquivo.display(), c.janela_cobranca)));
+    }
+    if !argos::util::WEEKDAYS.contains(&c.resumo_dia.as_str()) || !hora(&c.resumo_hora) || c.resumo_a_cada_dias < 7 || c.resumo_a_cada_dias % 7 != 0 {
+        return Err(Erro::Msg(format!("{}: resumo_dia (segunda…domingo), resumo_hora (\"17:00\") ou resumo_a_cada_dias (7, 14…)", arquivo.display())));
     }
     if c.cobrar_a_cada_h <= 0.0 || c.escalar_apos < 1 {
         return Err(Erro::Msg(format!("{}: cobrar_a_cada_h e escalar_apos têm que ser positivos", arquivo.display())));
