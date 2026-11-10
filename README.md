@@ -45,7 +45,9 @@ Console](https://console.cloud.google.com/):
 
 1. crie um projeto e ligue a **Google Calendar API**;
 2. na tela de consentimento OAuth, escolha **Externo** e **publique o app** (em produção). Em teste, o
-   token vence em 7 dias;
+   token vence em 7 dias. Publicar pede, no Branding, a página inicial e a política de privacidade:
+   servem o link deste repo e o do [`PRIVACIDADE.md`](PRIVACIDADE.md). Sem logotipo, que obriga a
+   verificar o app;
 3. em Credenciais, crie um **ID do cliente OAuth** do tipo **App para computador** e salve o JSON como
    `credenciais/google_client.json`;
 4. numa máquina com navegador, rode `ariadne --google-login` e entre com a conta dela. O app não é
