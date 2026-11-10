@@ -7,11 +7,11 @@
 //! não tem e-mail recebe o botão "📅 Salvar na agenda". Sem o `--google-login`, marcar manda só o botão.
 
 use crate::atendente::{trava, Atendente};
-use argos::agenda::{agenda_line, horarios_livres, linha_livre, linhas_livres, parse_janela};
+use argos::agenda::{horarios_livres, linha_livre, linhas_livres, parse_janela};
 use argos::gcal::{link_salvar, GoogleCalendar};
 use argos::rascunho::esc;
-use argos::util::{agora, arg_str, from_iso, so_data, Dt, Erro, R};
-use chrono::Datelike;
+use argos::util::{agora, arg_str, from_iso, fuso, so_data, Dt, Erro, R};
+use chrono::{Datelike, NaiveDateTime, NaiveTime};
 use serde_json::{json, Value};
 
 /// escopos do `--google-login` além do `calendar.events`: o livre/ocupado das agendas que ela enxerga
@@ -19,6 +19,10 @@ pub const ESCOPOS_EXTRA: [&str; 2] = ["https://www.googleapis.com/auth/calendar.
 const SEM_GOOGLE: &str = "a agenda ainda não está ligada (falta o ariadne --google-login no servidor)";
 /// dias de horário livre que vão pro modelo
 const MAX_DIAS_LIVRES: usize = 5;
+/// buraco menor que isto não aparece como livre no ver agenda
+const MIN_LIVRE: i64 = 30;
+/// a resposta é um bloco pronto: a persona manda como está (o que vem antes é só pra ela)
+const BLOCO: &str = "Mande só este bloco, como está:";
 
 /// quem vai (ids), gravado no evento
 fn quem_do_evento(e: &Value) -> Vec<String> {
@@ -57,26 +61,29 @@ fn status(e: &Value, email: &str) -> &'static str {
     }
 }
 
-/// o evento com início e fim no fuso configurado: o Google devolve no fuso da agenda dela, que numa
-/// conta nova é UTC (sem isso, 18h30 aparece como 21h30)
-fn no_fuso(e: &Value) -> Value {
-    let mut e = e.clone();
-    for k in ["start", "end"] {
-        if let Some(dt) = e.pointer(&format!("/{k}/dateTime")).and_then(Value::as_str).and_then(|s| from_iso(s).ok()) {
-            e[k]["dateTime"] = json!(argos::util::iso(&dt.with_timezone(&argos::util::fuso()).fixed_offset()));
-        }
-    }
-    e
+/// início e fim do evento no fuso configurado (dia inteiro → None). O Google devolve no fuso da
+/// agenda dela, que numa conta nova é UTC: sem converter, 18h30 aparece como 21h30
+fn horario(e: &Value) -> Option<(NaiveDateTime, NaiveDateTime)> {
+    let h = |k: &str| Some(from_iso(e.pointer(&format!("/{k}/dateTime"))?.as_str()?).ok()?.with_timezone(&fuso()).naive_local());
+    Some((h("start")?, h("end")?))
 }
 
-/// os intervalos (a, b) que caem dentro de um dos eventos
-fn sobrepoe(a: &Dt, b: &Dt, eventos: &[Value]) -> bool {
-    eventos.iter().any(|e| {
-        let ini = e.pointer("/start/dateTime").and_then(Value::as_str).and_then(|s| from_iso(s).ok());
-        let fim = e.pointer("/end/dateTime").and_then(Value::as_str).and_then(|s| from_iso(s).ok());
-        matches!((ini, fim), (Some(i), Some(f)) if i < *b && f > *a)
-    })
+/// ("ter 15/01", "10h–11h")
+fn dia_e_faixa(a: &NaiveDateTime, b: &NaiveDateTime) -> (String, String) {
+    let l = linha_livre(a, b);
+    let (d, f) = l.split_once(" · ").unwrap_or((&l, ""));
+    (d.to_string(), f.to_string())
 }
+
+fn titulo_do(e: &Value) -> &str {
+    e.get("summary").and_then(Value::as_str).unwrap_or("(sem título)")
+}
+
+fn maiuscula(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
+}
+
 
 /// (slug, primeiro nome, e-mail) de cada um
 type Pessoa = (String, String, Option<String>);
@@ -186,56 +193,59 @@ impl Atendente {
             ev = Some(self.google()?.create_convidando(&body)?);
         }
 
-        let quando = linha_livre(&ini.naive_local(), &fim.naive_local());
+        let quando = esc(&linha_livre(&ini.naive_local(), &fim.naive_local()));
         let link = link_salvar(&titulo, &ini, &fim, &descricao, &local);
-        let (mut avisei, mut fora) = (vec![], vec![]);
+        let sobre = if local.is_empty() { esc(&titulo) } else { format!("{} · {}", esc(&titulo), esc(&local)) };
+        let com = |slug: &str| {
+            let outros: Vec<&str> = pessoas.iter().filter(|p| p.0 != slug).map(|p| p.1.as_str()).collect();
+            if outros.is_empty() { "só você".to_string() } else { format!("com {}", esc(&outros.join(", "))) }
+        };
+        let (mut fora, mut cartao_pra_mim) = (vec![], false);
         for (slug, nome, email) in &pessoas {
             let convite = ev.is_some() && email.is_some();
-            // quem marcou fica sabendo pela resposta; o cartão só vai pra ele se não tem convite
+            // quem marcou fica sabendo pela resposta; o cartão só vai pra ele se precisa do botão
             if slug == &self.slug && convite {
                 continue;
             }
             let cab = if slug == &self.slug { "📅 Marcado".to_string() } else { format!("📅 <b>{}</b> marcou", esc(&eu)) };
-            let mut msg = format!("{cab}: <b>{}</b>\n{}", esc(&titulo), esc(&quando));
-            if !local.is_empty() {
-                msg += &format!(" · {}", esc(&local));
-            }
-            let outros: Vec<&str> = pessoas.iter().filter(|p| &p.0 != slug).map(|p| p.1.as_str()).collect();
-            if !outros.is_empty() {
-                msg += &format!("\ncom {}", esc(&outros.join(", ")));
-            }
+            let mut msg = format!("{cab}\n<b>{quando}</b>\n{sobre}\n{}", com(slug));
             if convite {
-                msg += "\n<i>O convite do Google chegou no seu e-mail.</i>";
+                msg += "\n<i>Convite no seu e-mail.</i>";
             }
             let botao = (!convite).then(|| json!([[{"text": "📅 Salvar na agenda", "url": link}]]));
             match self.envia_para(slug, &msg, botao)? {
-                Some(_) if slug != &self.slug => avisei.push(nome.clone()),
-                Some(_) => {}
+                Some(_) => cartao_pra_mim |= slug == &self.slug,
                 None => fora.push(nome.clone()),
             }
         }
 
-        let mut r = match &ev {
-            Some(e) => format!("marcada: {quando} (id {})", e.get("id").and_then(Value::as_str).unwrap_or("?")),
-            None => format!("{SEM_GOOGLE}: não criei evento; mandei o botão \"Salvar na agenda\" pra cada um ({quando})"),
-        };
-        if ev.is_some() {
-            let convidados: Vec<&str> = pessoas.iter().filter(|p| p.2.is_some()).map(|p| p.1.as_str()).collect();
-            let sem: Vec<&str> = pessoas.iter().filter(|p| p.2.is_none()).map(|p| p.1.as_str()).collect();
-            if !convidados.is_empty() {
-                r += &format!("; convite do Google pra {}", convidados.join(", "));
+        let mut notas = vec![];
+        match &ev {
+            None => notas.push(format!("{SEM_GOOGLE}: cada um recebeu o botão Salvar na agenda")),
+            Some(_) => {
+                if pessoas.iter().any(|p| p.0 == self.slug && p.2.is_some()) {
+                    notas.push("convite no seu e-mail".to_string());
+                }
+                let outros = |com_email: bool| pessoas.iter().filter(|p| p.0 != self.slug && p.2.is_some() == com_email).map(|p| p.1.as_str()).collect::<Vec<_>>();
+                if !outros(true).is_empty() {
+                    notas.push(format!("convite pra {}", outros(true).join(", ")));
+                }
+                if !outros(false).is_empty() {
+                    notas.push(format!("sem e-mail, só o botão: {}", outros(false).join(", ")));
+                }
             }
-            if !sem.is_empty() {
-                r += &format!("; sem e-mail cadastrado (recebeu só o botão Salvar na agenda): {}", sem.join(", "));
-            }
-        }
-        if !avisei.is_empty() {
-            r += &format!("; avisei aqui: {}", avisei.join(", "));
         }
         if !fora.is_empty() {
-            r += &format!("; não está no Telegram comigo: {}", fora.join(", "));
+            notas.push(format!("fora do Telegram: {}", fora.join(", ")));
         }
-        Ok(r)
+        let notas = if notas.is_empty() { String::new() } else { format!("<i>{}.</i>", esc(&maiuscula(&notas.join("; ")))) };
+        let id = ev.as_ref().and_then(|e| e.get("id")).and_then(Value::as_str).map(|i| format!(" (id {i}, não mostre)")).unwrap_or_default();
+        Ok(if cartao_pra_mim {
+            let resto = if notas.is_empty() { String::new() } else { format!(" Mande só isto, como está:\n{notas}") };
+            format!("marcada{id}. O cartão com o botão já chegou pra quem fala: não repita a reunião.{resto}")
+        } else {
+            format!("marcada{id}. {BLOCO}\n📅 Marcado\n<b>{quando}</b>\n{sobre}\n{}\n{notas}", com(&self.slug)).trim_end().to_string()
+        })
     }
 
     fn ver_agenda(&mut self, args: &Value) -> R<String> {
@@ -262,38 +272,66 @@ impl Atendente {
             return Err(Erro::Valor("fim antes do inicio".into()));
         }
         let g = self.google()?;
-        let eventos: Vec<Value> = g.list_events(&ini, &fim, None)?.into_iter().filter(|e| quem_do_evento(e).contains(&alvo)).collect();
-        let mut linhas = vec![];
-        for e in &eventos {
-            let quem: Vec<String> = quem_do_evento(e)
-                .iter()
-                .filter_map(|s| nomes.iter().find(|n| &n.0 == s))
-                .map(|(_, n, m)| format!("{n}{}", m.as_deref().map(|m| status(e, m)).unwrap_or_default()))
-                .collect();
-            let de = nomes.iter().find(|n| n.0 == de_do_evento(e)).map(|n| n.1.as_str()).unwrap_or("?");
-            linhas.push(format!("{} · com {} · marcou: {de} [id {}]", agenda_line(&no_fuso(e))?, quem.join(", "), e.get("id").and_then(Value::as_str).unwrap_or("?")));
-        }
-        let mut r = if linhas.is_empty() { format!("nenhuma reunião marcada por mim com {nome} nesse período") } else { format!("reuniões de {nome}:\n{}", linhas.join("\n")) };
-        // o resto da agenda dele(a), só como ocupado
+        let mut eventos: Vec<Value> = g.list_events(&ini, &fim, None)?.into_iter().filter(|e| quem_do_evento(e).contains(&alvo)).collect();
+        eventos.sort_by_key(|e| horario(e).map(|h| h.0));
+        // a agenda pessoal entra só como ocupado, pra achar os livres
+        let (mut ocupado, mut nota) = (eventos.clone(), None);
         match email {
-            None => r += &format!("\n(sem e-mail cadastrado: não vejo a agenda pessoal de {nome})"),
+            None => nota = Some(format!("sem e-mail cadastrado: não vejo a agenda pessoal de {nome}")),
             Some(m) => match g.free_busy(std::slice::from_ref(&m), &ini, &fim)?.pop().map(|x| x.1) {
-                Some(Ok(busy)) => {
-                    let outros: Vec<String> = busy
-                        .iter()
-                        .filter_map(|b| Some((from_iso(b.pointer("/start/dateTime")?.as_str()?).ok()?, from_iso(b.pointer("/end/dateTime")?.as_str()?).ok()?)))
-                        .filter(|(a, b)| !sobrepoe(a, b, &eventos))
-                        .map(|(a, b)| linha_livre(&a.with_timezone(&argos::util::fuso()).naive_local(), &b.with_timezone(&argos::util::fuso()).naive_local()))
-                        .collect();
-                    if !outros.is_empty() {
-                        r += &format!("\nocupado na agenda pessoal (sem detalhes):\n{}", outros.join("\n"));
-                    }
-                }
-                Some(Err(motivo)) => r += &format!("\n(não vejo o livre/ocupado de {nome}: {motivo}; falta compartilhar a agenda com a minha conta)"),
+                Some(Ok(busy)) => ocupado.extend(busy),
+                Some(Err(motivo)) => nota = Some(format!("não vejo a agenda pessoal de {nome} ({motivo}): falta compartilhar o livre/ocupado com a minha conta")),
                 None => {}
             },
         }
-        Ok(r)
+        let vejo = nota.is_none();
+        let janela = parse_janela(&format!("{}-{}", self.config.janela_reuniao.0, self.config.janela_reuniao.1))?;
+        let (de, ate) = (ini.with_timezone(&fuso()).naive_local(), fim.with_timezone(&fuso()).naive_local());
+        let n = ((ate - chrono::Duration::seconds(1)).date() - de.date()).num_days() + 1;
+        let livres = if vejo { horarios_livres(&ocupado, &[janela], de, n, MIN_LIVRE) } else { vec![] };
+
+        let (mut blocos, mut ids) = (vec![], vec![]);
+        for d in 0..n {
+            let dia = de.date() + chrono::Duration::days(d);
+            let do_dia: Vec<&Value> = eventos.iter().filter(|e| horario(e).is_some_and(|(a, _)| a.date() == dia)).collect();
+            let fs: Vec<String> = livres.iter().filter(|(a, _)| a.date() == dia).map(|(a, b)| dia_e_faixa(a, b).1).collect();
+            let fds = dia.weekday().number_from_monday() > 5;
+            // sem reunião: só dia útil, e hoje só se ainda sobra livre
+            if do_dia.is_empty() && (!vejo || fds || (d == 0 && fs.is_empty())) {
+                continue;
+            }
+            let meia_noite = dia.and_time(NaiveTime::MIN);
+            let cab = dia_e_faixa(&meia_noite, &meia_noite).0;
+            let mut linhas = vec![format!("<b>{cab}</b>")];
+            for e in do_dia {
+                let Some((a, b)) = horario(e) else { continue };
+                let faixa = dia_e_faixa(&a, &b).1;
+                let outros: Vec<String> = quem_do_evento(e)
+                    .iter()
+                    .filter(|s| **s != alvo)
+                    .filter_map(|s| nomes.iter().find(|n| &n.0 == s))
+                    .map(|(_, n, m)| format!("{n}{}", m.as_deref().map(|m| status(e, m)).unwrap_or_default()))
+                    .collect();
+                let com = if outros.is_empty() { String::new() } else { format!(" · com {}", outros.join(", ")) };
+                linhas.push(format!("  {faixa}  {}{}", esc(titulo_do(e)), esc(&com)));
+                let quem_marcou = nomes.iter().find(|n| n.0 == de_do_evento(e)).map(|n| n.1.as_str()).unwrap_or("?");
+                ids.push(format!("{cab} {faixa} {} = {}, marcou {quem_marcou}", titulo_do(e), e.get("id").and_then(Value::as_str).unwrap_or("?")));
+            }
+            if vejo {
+                linhas.push(if fs.is_empty() { "  sem horário livre".to_string() } else { format!("  livre: {}", fs.join(", ")) });
+            }
+            blocos.push(linhas.join("\n"));
+        }
+
+        let mut r = if blocos.is_empty() { format!("Nenhuma reunião marcada por mim com {} nesse período.", esc(&nome)) } else { blocos.join("\n\n") };
+        if alvo != self.slug {
+            r = format!("📅 <b>Agenda de {}</b>\n\n{r}", esc(&nome));
+        }
+        if let Some(n) = nota {
+            r += &format!("\n\n<i>{}.</i>", esc(&maiuscula(&n)));
+        }
+        let ids = if ids.is_empty() { String::new() } else { format!("(ids pra desmarcar, não mostre: {})\n", ids.join("; ")) };
+        Ok(format!("{ids}{BLOCO}\n{r}"))
     }
 
     fn livres_juntos(&mut self, args: &Value) -> R<String> {
@@ -354,8 +392,9 @@ impl Atendente {
             return Err(Erro::Valor(format!("só quem marcou ({nome}) ou o chefe desmarca")));
         }
         self.google()?.delete_avisando(id.trim())?;
-        let linha = agenda_line(&no_fuso(&e))?;
-        let msg = format!("🚫 <b>{}</b> desmarcou: {}", esc(&eu), esc(&linha));
+        let quando = horario(&e).map(|(a, b)| linha_livre(&a, &b)).unwrap_or_default();
+        let cartao = |cab: &str| format!("{cab}\n<b>{}</b>\n{}", esc(&quando), esc(titulo_do(&e)));
+        let msg = cartao(&format!("🚫 <b>{}</b> desmarcou", esc(&eu)));
         let mut avisei = vec![];
         let eu_slug = self.slug.clone();
         for s in quem_do_evento(&e).into_iter().filter(|s| *s != eu_slug) {
@@ -363,6 +402,10 @@ impl Atendente {
                 avisei.push(trava(&self.equipe).primeiro_nome(&s));
             }
         }
-        Ok(format!("desmarcada: {linha}; o Google avisou os convidados{}", if avisei.is_empty() { String::new() } else { format!("; avisei aqui: {}", avisei.join(", ")) }))
+        let mut notas = vec!["o Google avisou os convidados".to_string()];
+        if !avisei.is_empty() {
+            notas.push(format!("avisei aqui: {}", avisei.join(", ")));
+        }
+        Ok(format!("desmarcada. {BLOCO}\n{}\n<i>{}.</i>", cartao("🚫 Desmarcado"), esc(&maiuscula(&notas.join("; ")))))
     }
 }

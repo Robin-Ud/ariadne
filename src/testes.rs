@@ -789,8 +789,8 @@ fn marcar_reuniao_convida_quem_tem_email_e_avisa_aqui() {
     let pedido = json!({"titulo": "Planejamento", "inicio": "2030-01-15T15:00", "quem": ["beltrano"], "local": "Sala 2"});
 
     let res = a.ferramenta("marcar_reuniao", &pedido).unwrap();
-    assert!(res.starts_with("marcada: ter 15/01 · 15h–16h (id ev1); convite do Google pra Fulana; sem e-mail"), "{res}");
-    assert!(res.contains("Beltrano") && res.ends_with("avisei aqui: Beltrano"), "{res}");
+    assert_eq!(res, "marcada (id ev1, não mostre). Mande só este bloco, como está:\n📅 Marcado\n<b>ter 15/01 · 15h–16h</b>\n\
+                     Planejamento · Sala 2\ncom Beltrano\n<i>Convite no seu e-mail; sem e-mail, só o botão: Beltrano.</i>");
     let (p, fb) = grx.recv().unwrap();
     assert_eq!(p, "POST /freeBusy");
     assert_eq!(fb["items"], json!([{"id": "fulana@exemplo.com"}]));
@@ -802,7 +802,7 @@ fn marcar_reuniao_convida_quem_tem_email_e_avisa_aqui() {
     assert_eq!(ev["extendedProperties"]["private"], json!({"ariadne_de": "fulana-souza", "ariadne_quem": "beltrano,fulana-souza"}));
     assert_eq!(ev["location"], "Sala 2");
     // Beltrano (sem e-mail) recebe o cartão com o botão; Fulana tem o convite no e-mail
-    let c = espera(&rx, enviado_a(200, "📅 <b>Fulana</b> marcou: <b>Planejamento</b>\nter 15/01 · 15h–16h · Sala 2\ncom Fulana"));
+    let c = espera(&rx, enviado_a(200, "📅 <b>Fulana</b> marcou\n<b>ter 15/01 · 15h–16h</b>\nPlanejamento · Sala 2\ncom Fulana"));
     assert!(c["reply_markup"]["inline_keyboard"][0][0]["url"].as_str().unwrap().starts_with("https://calendar.google.com/calendar/render?action=TEMPLATE&text=Planejamento"));
     nada(&rx, 200, |c| c["chat_id"] == 100);
 
@@ -812,7 +812,7 @@ fn marcar_reuniao_convida_quem_tem_email_e_avisa_aqui() {
     assert_eq!(grx.recv().unwrap().0, "POST /freeBusy");
     let mut forcado = pedido.clone();
     forcado["forcar"] = json!(true);
-    assert!(a.ferramenta("marcar_reuniao", &forcado).unwrap().contains("(id ev2)"));
+    assert!(a.ferramenta("marcar_reuniao", &forcado).unwrap().contains("(id ev2, não mostre)"));
     assert_eq!(grx.recv().unwrap().0, "POST /calendars/primary/events?sendUpdates=all");
 
     let e = a.ferramenta("marcar_reuniao", &json!({"titulo": "x", "inicio": "2030-01-15", "quem": []})).unwrap_err().to_string();
@@ -824,8 +824,9 @@ fn marcar_reuniao_convida_quem_tem_email_e_avisa_aqui() {
 fn sem_google_marcar_manda_so_o_botao_e_o_resto_avisa() {
     let (_tmp, _r, rx, _, mut a) = agenda_de_teste(None);
     let res = a.ferramenta("marcar_reuniao", &json!({"titulo": "Café", "inicio": "2030-01-15T09:30", "duracao_min": 30, "quem": ["todos"]})).unwrap();
-    assert!(res.contains("não criei evento") && res.contains("ter 15/01 · 09h30–10h"), "{res}");
-    for (chat, cab) in [(200, "📅 <b>Fulana</b> marcou: <b>Café</b>"), (100, "📅 Marcado: <b>Café</b>")] {
+    assert!(res.starts_with("marcada. O cartão com o botão já chegou pra quem fala: não repita a reunião."), "{res}");
+    assert!(res.contains("--google-login") && res.contains("botão Salvar na agenda"), "{res}");
+    for (chat, cab) in [(200, "📅 <b>Fulana</b> marcou\n<b>ter 15/01 · 09h30–10h</b>\nCafé\ncom Fulana"), (100, "📅 Marcado\n<b>ter 15/01 · 09h30–10h</b>\nCafé\ncom Beltrano")] {
         let c = espera(&rx, move |m, c| m == "sendMessage" && c["chat_id"] == chat && c["text"].as_str().unwrap_or_default().starts_with(cab));
         assert_eq!(c["reply_markup"]["inline_keyboard"][0][0]["text"], "📅 Salvar na agenda");
     }
@@ -844,12 +845,13 @@ fn ver_agenda_e_livres_juntos() {
     let busy = json!({"calendars": {"fulana@exemplo.com": {"busy": [
         {"start": "2030-01-15T13:00:00Z", "end": "2030-01-15T14:00:00Z"},
         {"start": "2030-01-15T17:00:00Z", "end": "2030-01-15T18:00:00Z"}]}}});
-    let (_tmp, _r, _rx, grx, mut a) = agenda_de_teste(Some(vec![eventos.clone(), busy.clone(), eventos, busy]));
+    let (_tmp, _r, _rx, grx, mut a) = agenda_de_teste(Some(vec![eventos.clone(), busy.clone(), eventos.clone(), busy, eventos]));
     let grx = grx.unwrap();
 
     let r = a.ferramenta("ver_agenda", &json!({"inicio": "2030-01-15", "fim": "2030-01-15"})).unwrap();
-    assert_eq!(r, "reuniões de Fulana:\nter 15/01 · 10h Planejamento · com Beltrano, Fulana ✅ · marcou: Beltrano [id ev1]\n\
-                   ocupado na agenda pessoal (sem detalhes):\nter 15/01 · 14h–15h");
+    assert_eq!(r, "(ids pra desmarcar, não mostre: ter 15/01 10h–11h Planejamento = ev1, marcou Beltrano)\n\
+                   Mande só este bloco, como está:\n<b>ter 15/01</b>\n  10h–11h  Planejamento · com Beltrano\n\
+                   \x20 livre: 09h–10h, 11h–14h, 15h–18h");
     let (p, _) = grx.recv().unwrap();
     assert!(p.starts_with("GET /calendars/primary/events?timeMin=2030-01-15T00%3A00%3A00-03%3A00&timeMax=2030-01-16T00%3A00%3A00-03%3A00"), "{p}");
     assert_eq!(grx.recv().unwrap().0, "POST /freeBusy");
@@ -857,6 +859,14 @@ fn ver_agenda_e_livres_juntos() {
     let r = a.ferramenta("livres_juntos", &json!({"quem": ["beltrano"], "inicio": "2030-01-15", "dias": 1})).unwrap();
     assert_eq!(r, "livres em comum (Beltrano, Fulana), 60 min, entre 09:00 e 18:00:\nter 15/01 · 09h–10h, 11h–14h, 15h–18h\n\
                    não vejo a agenda de: Beltrano (sem e-mail cadastrado) (contei como livre, fora as reuniões que eu marquei)");
+    assert_eq!(grx.recv().unwrap().0.split('?').next(), Some("GET /calendars/primary/events"));
+    assert_eq!(grx.recv().unwrap().0, "POST /freeBusy");
+
+    // a agenda de outro, sem e-mail: só os dias com reunião, com quem vai e se confirmou
+    let r = a.ferramenta("ver_agenda", &json!({"quem": "beltrano", "inicio": "2030-01-15", "fim": "2030-01-19"})).unwrap();
+    assert_eq!(r, "(ids pra desmarcar, não mostre: ter 15/01 10h–11h Planejamento = ev1, marcou Beltrano)\n\
+                   Mande só este bloco, como está:\n📅 <b>Agenda de Beltrano</b>\n\n<b>ter 15/01</b>\n  10h–11h  Planejamento · com Fulana ✅\n\n\
+                   <i>Sem e-mail cadastrado: não vejo a agenda pessoal de Beltrano.</i>");
 }
 
 #[test]
@@ -872,8 +882,9 @@ fn desmarcar_so_quem_marcou_e_avisa_os_outros() {
     let mut b = atendente_de(&r, "beltrano", 200);
     b.google_base = a.google_base.clone();
     let res = b.ferramenta("desmarcar_reuniao", &json!({"id": "ev1"})).unwrap();
-    assert_eq!(res, "desmarcada: ter 15/01 · 10h Planejamento; o Google avisou os convidados; avisei aqui: Fulana");
+    assert_eq!(res, "desmarcada. Mande só este bloco, como está:\n🚫 Desmarcado\n<b>ter 15/01 · 10h–11h</b>\nPlanejamento\n\
+                     <i>O Google avisou os convidados; avisei aqui: Fulana.</i>");
     assert_eq!(grx.recv().unwrap().0, "GET /calendars/primary/events/ev1");
     assert_eq!(grx.recv().unwrap().0, "DELETE /calendars/primary/events/ev1?sendUpdates=all");
-    espera(&rx, enviado_a(100, "🚫 <b>Beltrano</b> desmarcou: ter 15/01 · 10h Planejamento"));
+    espera(&rx, enviado_a(100, "🚫 <b>Beltrano</b> desmarcou\n<b>ter 15/01 · 10h–11h</b>\nPlanejamento"));
 }

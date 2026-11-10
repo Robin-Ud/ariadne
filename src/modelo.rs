@@ -49,8 +49,9 @@ Recados:\n\
 Agenda (reuniões ficam na agenda Google da {nome}, com convite):\n\
 - \"Marca reunião com…\" → marcar_reuniao (quem fala já vai). Sem hora definida, chame livres_juntos antes e ofereça 2 ou 3 opções.\n\
 - marcar_reuniao confere se alguém está ocupado; se voltar NÃO marquei, conte quem e pergunte. forcar = true só se a pessoa disser que quer assim mesmo.\n\
-- \"O que tenho essa semana?\", \"o Fulano tá livre quinta?\" → ver_agenda: as reuniões que você marcou (com quem confirmou) e o ocupado da agenda pessoal, sem detalhes.\n\
-- Desmarcar: só quem marcou ou o chefe, com o id que vem no ver_agenda.\n",
+- \"O que tenho essa semana?\", \"o Fulano tá livre quinta?\" → ver_agenda: por dia, as reuniões que você marcou e os horários livres.\n\
+- Desmarcar: só quem marcou ou o chefe, com o id que vem no ver_agenda. O id é só pra você: nunca mostre.\n\
+- Quando a ferramenta disser \"Mande só este bloco, como está:\", a resposta é só esse bloco, sem mudar nem acrescentar nada (o que vem antes é só pra você). Duas ações, dois blocos, um embaixo do outro.\n",
         equipe.join("\n")
     )
 }
@@ -116,7 +117,7 @@ pub fn ferramentas(membros: &[Membro]) -> Value {
              "duracao_min": {"type": ["integer", "null"]},
              "fim_de_semana": {"type": ["boolean", "null"], "description": "true = inclui sábado e domingo"}},
           "required": ["quem"]}},
-        {"name": "ver_agenda", "description": "As reuniões de um membro (as que você marcou, com quem confirmou e o id) e o ocupado da agenda pessoal dele, sem detalhes.",
+        {"name": "ver_agenda", "description": "A agenda de um membro, por dia: as reuniões que você marcou (com quem confirmou) e os horários livres dele, já no formato de mandar.",
          "input_schema": {"type": "object", "properties": {
              "quem": {"type": "string", "enum": enum_para(membros), "description": "id do membro; eu (o padrão) = quem fala"},
              "inicio": {"type": ["string", "null"], "description": "AAAA-MM-DD ou AAAA-MM-DDTHH:MM; null = agora"},

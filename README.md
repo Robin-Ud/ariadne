@@ -127,13 +127,16 @@ As reuniões ficam na agenda Google dela, que é quem organiza.
 
 - **Marcar:** "marca reunião com o Fulano quinta 15h". Antes de marcar, ela confere o livre/ocupado
   de todos. Se alguém está ocupado, ela não marca, diz quem e pergunta. Quem tem e-mail recebe o
-  convite do Google e aceita por lá. Todo mundo recebe o aviso aqui ("📅 Beltrana marcou: …"), e quem
-  não tem e-mail recebe também o botão "📅 Salvar na agenda".
+  convite do Google e aceita por lá. Todo mundo recebe o aviso aqui, em bloco ("📅 Beltrana marcou",
+  dia e hora em negrito, assunto, com quem), e quem não tem e-mail recebe também o botão "📅 Salvar
+  na agenda".
 - **Livres juntos:** "quando a gente tá livre essa semana?". Ela junta o livre/ocupado de cada um com
   as reuniões que já marcou e devolve os buracos em dia útil, dentro da `janela_reuniao`. Quem não
   compartilhou a agenda conta como livre, e ela avisa.
-- **Ver:** "o que tenho essa semana?". Mostra as reuniões que ela marcou, com quem confirmou (✅
-  aceitou, ❌ recusou, ❔ talvez, ⏳ não respondeu), e o ocupado da agenda pessoal, sem detalhes.
+- **Ver:** "o que tenho essa semana?". Um bloco por dia útil: as reuniões que ela marcou, com quem
+  confirmou (✅ aceitou, ❌ recusou, ❔ talvez, ⏳ não respondeu), e os horários livres dentro da
+  `janela_reuniao` (buraco de 30 min ou mais), tirados do livre/ocupado da agenda pessoal. Fim de
+  semana só aparece se tem reunião. O id do evento fica só com ela.
 - **Desmarcar:** só quem marcou ou o chefe. O Google avisa os convidados, e ela avisa aqui.
 
 O que é de cada reunião (quem marcou, quem vai) fica no próprio evento, em
