@@ -21,6 +21,8 @@ pub struct Roteador {
     filas: HashMap<i64, Sender<Value>>,
     /// URL do modelo (só os testes trocam)
     pub claude_url: Option<String>,
+    /// URL do Google, agenda e token (só os testes trocam)
+    pub google_url: Option<String>,
 }
 
 /// chat do update e se é conversa privada (message ou botão)
@@ -40,7 +42,7 @@ impl Roteador {
     /// lê `membros/` e sobe um atendente por membro pareado
     pub fn new(dir: PathBuf, config: Config, tg: Telegram) -> R<Roteador> {
         let time = Time::carregar(&dir)?;
-        let mut r = Roteador { tg, dir, config, equipe: Arc::new(Mutex::new(time)), filas: HashMap::new(), claude_url: None };
+        let mut r = Roteador { tg, dir, config, equipe: Arc::new(Mutex::new(time)), filas: HashMap::new(), claude_url: None, google_url: None };
         r.recarrega()?;
         Ok(r)
     }
@@ -67,7 +69,8 @@ impl Roteador {
             tg.base = self.tg.base.clone();
             tg.file_base = self.tg.file_base.clone();
             tg.conversa = Some(membros::pasta(&self.dir).join(&m.slug).join("conversa.jsonl"));
-            let a = Atendente::new(tg, &m.slug, chat, self.config.clone(), self.dir.clone(), self.equipe.clone(), self.claude());
+            let mut a = Atendente::new(tg, &m.slug, chat, self.config.clone(), self.dir.clone(), self.equipe.clone(), self.claude());
+            a.google_base = self.google_url.clone();
             let (tx, rx) = channel();
             std::thread::Builder::new().name(m.slug.clone()).spawn(move || a.laco(rx))?;
             println!("atendente: {} (chat {chat})", m.slug);

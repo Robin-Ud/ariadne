@@ -8,7 +8,8 @@ viagem a trabalho), em Rust, usando o `../argos` como biblioteca. Ainda no plano
 ```bash
 cargo test                     # tudo contra o Telegram falso (src/falso.rs), sem rede
 cargo run -- --selftest        # 3 membros, 600 mensagens, VmHWM
-cargo run -- --checar-config   # com ARIADNE_DIR: config, token (getMe) e membros
+cargo run -- --checar-config   # com ARIADNE_DIR: config, token (getMe), membros e Google
+cargo run -- --google-login    # login da conta Google dela (navegador)
 ```
 
 Mapa:
@@ -21,9 +22,12 @@ Mapa:
   tarefa e a pergunta que vem depois.
 - `resumo.rs`: resumo quinzenal do chefe (sem modelo).
 - `recados.rs`: recado na hora ou agendado (sai no `tick` de quem recebe).
+- `agenda.rs`: reunião na agenda Google dela (convite, `extendedProperties.private` com quem marcou e
+  quem vai), livres juntos pelo freeBusy, ver e desmarcar. `google()` cria o `GoogleCalendar` no
+  primeiro uso.
 - `modelo.rs`: persona, definição das ferramentas, laço com o modelo. `ferramentas.rs`: o que cada
   ferramenta faz.
-- `falso.rs`: Telegram e modelo falsos. `main.rs`: CLI.
+- `falso.rs`: Telegram, modelo e Google falsos. `main.rs`: CLI.
 
 ## Regras
 

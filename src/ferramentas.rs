@@ -51,6 +51,7 @@ impl Atendente {
                 let alvo = estado::le_quando(&arg_str(args, "quando")?)?;
                 self.adiar(id_de(args)?, &alvo, &agora())
             }
+            "marcar_reuniao" | "ver_agenda" | "livres_juntos" | "desmarcar_reuniao" => self.agenda(nome, args),
             _ => Err(Erro::Valor(format!("ferramenta desconhecida: {nome}"))),
         }
     }

@@ -1,5 +1,6 @@
 //! Ariadne: bot de Telegram de uma equipe pequena, sobre a biblioteca do Argos. Ver PLANO.md.
 
+pub mod agenda;
 pub mod atendente;
 pub mod botoes;
 pub mod config;

@@ -28,6 +28,9 @@ pub struct Config {
     pub resumo_dia: String,
     pub resumo_hora: String,
     pub resumo_a_cada_dias: i64,
+    /// reunião: horário em que se procura horário livre ("HH:MM") e a duração padrão
+    pub janela_reuniao: (String, String),
+    pub reuniao_min: i64,
 }
 
 impl Default for Config {
@@ -45,6 +48,8 @@ impl Default for Config {
             resumo_dia: "sexta".into(),
             resumo_hora: "17:00".into(),
             resumo_a_cada_dias: 14,
+            janela_reuniao: ("09:00".into(), "18:00".into()),
+            reuniao_min: 60,
         }
     }
 }
@@ -92,6 +97,9 @@ pub fn load_de(dir: &Path) -> R<Config> {
     }
     if !argos::util::WEEKDAYS.contains(&c.resumo_dia.as_str()) || !hora(&c.resumo_hora) || c.resumo_a_cada_dias < 7 || c.resumo_a_cada_dias % 7 != 0 {
         return Err(Erro::Msg(format!("{}: resumo_dia (segunda…domingo), resumo_hora (\"17:00\") ou resumo_a_cada_dias (7, 14…)", arquivo.display())));
+    }
+    if !hora(&c.janela_reuniao.0) || !hora(&c.janela_reuniao.1) || c.janela_reuniao.0 >= c.janela_reuniao.1 || c.reuniao_min < 5 {
+        return Err(Erro::Msg(format!("{}: janela_reuniao {:?} (use [\"09:00\", \"18:00\"]) ou reuniao_min (5 ou mais)", arquivo.display(), c.janela_reuniao)));
     }
     if c.cobrar_a_cada_h <= 0.0 || c.escalar_apos < 1 {
         return Err(Erro::Msg(format!("{}: cobrar_a_cada_h e escalar_apos têm que ser positivos", arquivo.display())));

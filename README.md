@@ -9,8 +9,9 @@ tocam num link. Ninguém mais precisa criar bot nem fazer login no Google.
 Usa o [Argos](https://github.com/Robin-Ud/argos) como biblioteca. O plano completo está no
 [`PLANO.md`](PLANO.md).
 
-> **Estado:** fase 1 (tarefas entre membros, lembretes pessoais, cobrança e recados) pronta no
-> código, testada contra o Telegram e o modelo falsos. Falta pôr no ar.
+> **Estado:** fase 1 (tarefas entre membros, lembretes pessoais, cobrança e recados) e fase 2
+> (agenda: reunião com convite, livres juntos) prontas no código, testadas contra Telegram, modelo e
+> Google falsos.
 
 ## Pôr no ar
 
@@ -38,6 +39,23 @@ O `--membro` imprime um link `https://t.me/<bot>?start=<código>` pra mandar pra
 Telegram abre o bot, ela toca em **Começar** e pronto. O link vale 7 dias e uma vez só. Rodar o
 `--membro` de novo pro mesmo nome gera outro link (celular novo, por exemplo). Pode cadastrar com o
 bot rodando.
+
+**Agenda (opcional):** uma conta Google só dela. Logado nessa conta, no [Google Cloud
+Console](https://console.cloud.google.com/):
+
+1. crie um projeto e ligue a **Google Calendar API**;
+2. na tela de consentimento OAuth, escolha **Externo** e **publique o app** (em produção). Em teste, o
+   token vence em 7 dias;
+3. em Credenciais, crie um **ID do cliente OAuth** do tipo **App para computador** e salve o JSON como
+   `credenciais/google_client.json`;
+4. numa máquina com navegador, rode `ariadne --google-login` e entre com a conta dela. O app não é
+   verificado, então o Google avisa: é só ir em Avançado → continuar. O `credenciais/google_token.json`
+   que sai dali vai pro servidor;
+5. cada membro compartilha a própria agenda com o e-mail dela, com **"Ver apenas livre/ocupado"**, e
+   ganha o e-mail na Ariadne (`--membro "Nome" --email x`).
+
+O `--checar-config` mostra de quem ela vê o livre/ocupado. Sem o login, "marca reunião" manda só o
+botão "📅 Salvar na agenda".
 
 **Na VM** (Oracle Linux 9): `./build-ol9.sh` compila num container `oraclelinux:9` (compilar no
 Fedora dá um binário que pede glibc nova demais) e deixa o binário em `target/ol9/release/ariadne`.
@@ -101,6 +119,24 @@ Quem tem `"chefe": true` no `membro.json` (`--membro "Nome" --chefe`):
   concluiu, as recusadas com o motivo, as canceladas, e o que está aberto por pessoa, com o que
   está atrasado e o que tem 2+ cobranças sem resposta. Lembrete pessoal dos outros não entra.
 
+## Agenda
+
+As reuniões ficam na agenda Google dela, que é quem organiza.
+
+- **Marcar:** "marca reunião com o Fulano quinta 15h". Antes de marcar, ela confere o livre/ocupado
+  de todos. Se alguém está ocupado, ela não marca, diz quem e pergunta. Quem tem e-mail recebe o
+  convite do Google e aceita por lá. Todo mundo recebe o aviso aqui ("📅 Beltrana marcou: …"), e quem
+  não tem e-mail recebe também o botão "📅 Salvar na agenda".
+- **Livres juntos:** "quando a gente tá livre essa semana?". Ela junta o livre/ocupado de cada um com
+  as reuniões que já marcou e devolve os buracos em dia útil, dentro da `janela_reuniao`. Quem não
+  compartilhou a agenda conta como livre, e ela avisa.
+- **Ver:** "o que tenho essa semana?". Mostra as reuniões que ela marcou, com quem confirmou (✅
+  aceitou, ❌ recusou, ❔ talvez, ⏳ não respondeu), e o ocupado da agenda pessoal, sem detalhes.
+- **Desmarcar:** só quem marcou ou o chefe. O Google avisa os convidados, e ela avisa aqui.
+
+O que é de cada reunião (quem marcou, quem vai) fica no próprio evento, em
+`extendedProperties.private`. Nada de agenda vai pro `estado.json`.
+
 ## Como funciona
 
 Um processo só faz o `getUpdates`, porque o Telegram não deixa dois processos lerem o mesmo bot. Ele
@@ -123,6 +159,8 @@ sempre ignorado.
 | `resumo_dia` | `"sexta"` | dia do resumo do chefe (segunda…domingo) |
 | `resumo_hora` | `"17:00"` | hora do resumo |
 | `resumo_a_cada_dias` | `14` | período do resumo (7, 14, 21…) |
+| `janela_reuniao` | `["09:00", "18:00"]` | onde o "livres juntos" procura horário |
+| `reuniao_min` | `60` | duração padrão da reunião |
 | `conversa_reset_min` | `30` | a conversa com o modelo recomeça depois de tanto tempo parada |
 
 ## Pastas
@@ -131,6 +169,8 @@ sempre ignorado.
 configs.json
 credenciais/telegram_token          0600
 credenciais/anthropic_key           0600, uma chave pra equipe toda
+credenciais/google_client.json      o cliente OAuth (agenda, opcional)
+credenciais/google_token.json       0600, do --google-login da conta dela
 membros/<slug>/membro.json          {nome, email, chefe}
 membros/<slug>/convite              0600, até a pessoa tocar no link
 membros/<slug>/chat_id              0600, depois

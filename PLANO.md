@@ -147,7 +147,7 @@ dá pra usar sozinha.
    chat, `--checar-config`, `--selftest` (RSS com 3 membros).
 1. **Recados e tarefas:** `delegar`, `recado`, `ver_tarefas`, ✅/🕒/❌, aviso de volta, cobrança
    espaçada, escalar pra quem pediu, responder recado.
-2. **Agenda:** link + `.ics`, convite, livres juntos.
+2. **Agenda:** convite, livres juntos, ver e desmarcar (feita no código, ver abaixo).
 3. **Viagem:** o port a partir do `d499ebf` do argos, já com as mudanças acima.
 4. **Equipe:** encaminhamentos de reunião (texto → tarefas pra cada um, com ✅ antes de gravar),
    🙋 eu pego, fechamento da semana.
@@ -176,11 +176,30 @@ os convites gerados lá.
 Cobrança: no máximo uma por dia (`cobrar_a_cada_h` = 24, espaçando até 72 h). Com isso, o escalar
 depois de 3 sem resposta cai uns 5 dias depois do pedido.
 
-Pra decidir: se a viagem é o que o patrão espera, a fase 3 vem antes da 2?
+## Fase 2 (10/11/2026)
+
+**Pronta no código**, testada contra o Google falso (`falso::google_falso`): `marcar_reuniao`,
+`livres_juntos`, `ver_agenda`, `desmarcar_reuniao`, `--google-login` e o Google no `--checar-config`.
+
+Decisões:
+- A conta Google é **dela** (decidido). O evento fica na agenda dela, com os membros em `attendees` e
+  `sendUpdates=all`; o convite chega "de Ariadne".
+- Quem marcou e quem vai ficam no evento (`extendedProperties.private`: `ariadne_de`, `ariadne_quem`),
+  não no `estado.json`. É assim que ela acha as reuniões de quem não tem e-mail.
+- Livre/ocupado pelo `freeBusy` (escopo `calendar.events.freebusy`): cada membro compartilha só "ver
+  apenas livre/ocupado" com a conta dela. Quem não compartilhou conta como livre, e ela avisa.
+- Marcar confere o ocupado antes e não marca por cima: devolve quem está ocupado, e o modelo pergunta
+  (`forcar`).
+- Desmarcar: só quem marcou ou o chefe.
+- Sem `.ics`: a equipe usa Google. Quem não tem e-mail recebe o botão "📅 Salvar na agenda" (link
+  sem login).
+- O Argos ganhou `create_convidando`, `delete_avisando`, `free_busy` e `link_salvar` no `gcal`.
+
+Falta: o login da conta dela (`--google-login`), o e-mail de cada membro e o compartilhamento do
+livre/ocupado. Depois, remarcar (hoje é desmarcar e marcar de novo).
 
 ## Em aberto
 
-- Conta Google: uma da Ariadne (recomendado) ou a de um membro?
 - Username do bot (o `@…Bot` tem que ser único), fica no complemento.
 - Chave da Anthropic: uma pra equipe (padrão); o `log_uso` separa por membro.
 - Viagem de quem não está na equipe (cliente que vai junto)? Por ora só membros.

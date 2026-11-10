@@ -6,6 +6,7 @@ use crate::config::Config;
 use crate::estado::{self, Estado};
 use crate::membros::{self, Membro};
 use argos::rascunho::esc;
+use argos::gcal::GoogleCalendar;
 use argos::rede::{Claude, Telegram};
 use argos::util::{corta, R};
 use serde_json::{json, Value};
@@ -71,11 +72,15 @@ pub struct Atendente {
     pub ultimo: Option<Instant>,
     /// tocou em 🕒 ou ❌: a próxima mensagem é a hora ou o motivo (ver `botoes.rs`)
     pub esperando: Option<(Espera, Instant)>,
+    /// a agenda da conta dela; criada no primeiro uso (o login pode vir com ela rodando). Ver `agenda.rs`
+    pub google: Option<GoogleCalendar>,
+    /// URL do Google (só os testes trocam)
+    pub google_base: Option<String>,
 }
 
 impl Atendente {
     pub fn new(tg: Telegram, slug: &str, chat_id: i64, config: Config, dir: PathBuf, equipe: Equipe, claude: Option<Claude>) -> Atendente {
-        Atendente { tg, slug: slug.to_string(), chat_id, config, dir, equipe, claude, historico: vec![], ultimo: None, esperando: None }
+        Atendente { tg, slug: slug.to_string(), chat_id, config, dir, equipe, claude, historico: vec![], ultimo: None, esperando: None, google: None, google_base: None }
     }
 
     pub fn laco(mut self, rx: Receiver<Value>) {
@@ -138,7 +143,7 @@ impl Atendente {
 
     fn saudacao(&self) -> String {
         format!(
-            "Oi, {}! Aqui é {}, a secretária da equipe.\n\nMe fala do jeito que falaria com uma pessoa:\n• \"pede pro Fulano mandar a proposta até sexta\"\n• \"me lembra de ligar pro contador amanhã\"\n• \"o que tenho pra fazer?\", \"o que eu pedi?\"\n\nQuem recebe uma tarefa é cobrado até concluir, adiar ou recusar, e quem pediu fica sabendo.",
+            "Oi, {}! Aqui é {}, a secretária da equipe.\n\nMe fala do jeito que falaria com uma pessoa:\n• \"pede pro Fulano mandar a proposta até sexta\"\n• \"me lembra de ligar pro contador amanhã\"\n• \"o que tenho pra fazer?\", \"o que eu pedi?\"\n• \"marca reunião com o Fulano quinta 15h\", \"quando a gente tá livre essa semana?\"\n\nQuem recebe uma tarefa é cobrado até concluir, adiar ou recusar, e quem pediu fica sabendo.",
             esc(&self.nome()),
             esc(&self.config.assistente)
         )

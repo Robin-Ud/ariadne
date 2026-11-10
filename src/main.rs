@@ -106,8 +106,48 @@ fn cli_checar_config() -> R<()> {
             println!("anthropic_key: ok ({})", c.modelo);
         }
     }
+    checar_google(&c, &lista)?;
     println!("ok");
     Ok(())
+}
+
+/// o Google: token (renova, grátis) e quem compartilhou o livre/ocupado com a conta dela
+fn checar_google(c: &config::Config, lista: &[membros::Membro]) -> R<()> {
+    let cred = Path::new(&c.cred_dir);
+    if !cred.join("google_client.json").exists() {
+        println!("google: sem google_client.json (agenda só com o botão \"Salvar na agenda\")");
+        return Ok(());
+    }
+    let mut g = match argos::gcal::GoogleCalendar::new(agente(), cred) {
+        Ok(g) => g,
+        Err(e) => {
+            println!("google: {e} (falta o ariadne --google-login?)");
+            return Ok(());
+        }
+    };
+    g.token()?;
+    println!("google: ok");
+    let emails: Vec<String> = lista.iter().filter_map(|m| m.email.clone()).collect();
+    if emails.is_empty() {
+        println!("  ninguém tem e-mail: convite e livre/ocupado precisam (ariadne --membro \"Nome\" --email x)");
+        return Ok(());
+    }
+    let agora = argos::util::agora();
+    for (email, r) in g.free_busy(&emails, &agora, &(agora + chrono::Duration::days(1)))? {
+        let nome = lista.iter().find(|m| m.email.as_deref() == Some(email.as_str())).map(|m| m.nome.as_str()).unwrap_or("?");
+        match r {
+            Ok(_) => println!("  {nome} <{email}>: vejo o livre/ocupado"),
+            Err(motivo) => println!("  {nome} <{email}>: não vejo o livre/ocupado ({motivo}): falta compartilhar a agenda com a conta dela"),
+        }
+    }
+    Ok(())
+}
+
+/// ariadne --google-login: login único da conta Google dela, no navegador (loopback + PKCE)
+fn cli_google_login() -> R<()> {
+    let c = load(&config::data_dir())?;
+    let extra: Vec<String> = ariadne::agenda::ESCOPOS_EXTRA.iter().map(|s| s.to_string()).collect();
+    argos::gcal::google_login(&agente(), Path::new(&c.cred_dir), &extra)
 }
 
 /// ariadne --selftest: 3 membros numa pasta temporária contra o Telegram falso em 127.0.0.1,
@@ -146,7 +186,7 @@ fn cli_selftest() -> R<()> {
 }
 
 fn uso() -> ! {
-    eprintln!("uso: ariadne                               roda\n      ariadne --membro \"Nome\" [--email x] [--chefe]  cadastra e imprime o link do convite\n      ariadne --checar-config                     valida config e token, lista os membros\n      ariadne --selftest                          3 membros contra um Telegram falso, pico de memória");
+    eprintln!("uso: ariadne                               roda\n      ariadne --membro \"Nome\" [--email x] [--chefe]  cadastra e imprime o link do convite\n      ariadne --checar-config                     valida config e token, lista os membros\n      ariadne --google-login                      login da conta Google dela (agenda), no navegador\n      ariadne --selftest                          3 membros contra um Telegram falso, pico de memória");
     std::process::exit(2);
 }
 
@@ -156,6 +196,7 @@ fn main() {
     let r: R<()> = match a.as_slice() {
         [] => cli_rodar(),
         ["--checar-config"] => cli_checar_config(),
+        ["--google-login"] => cli_google_login(),
         ["--selftest"] => cli_selftest(),
         ["--membro", nome, opcoes @ ..] => cli_membro(nome, opcoes),
         _ => uso(),

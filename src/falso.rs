@@ -72,3 +72,46 @@ pub fn claude_falso(respostas: Vec<Value>) -> (String, Receiver<Value>) {
     });
     (url, rx)
 }
+
+/// Google falso: `/token` sempre dá um access token; o resto recebe a próxima resposta da fila (acabou,
+/// 500) e manda ("MÉTODO /caminho?query", corpo) pro canal. A URL serve de `GoogleCalendar::base` e,
+/// com `/token`, de `token_uri` no `google_client.json` do teste
+pub fn google_falso(respostas: Vec<Value>) -> (String, Receiver<(String, Value)>) {
+    use std::io::{BufRead, BufReader, Read, Write};
+    let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", l.local_addr().unwrap());
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut fila = respostas.into_iter();
+        for s in l.incoming() {
+            let mut s = s.unwrap();
+            let mut r = BufReader::new(s.try_clone().unwrap());
+            let mut primeira = String::new();
+            r.read_line(&mut primeira).unwrap();
+            let mut tamanho = 0;
+            loop {
+                let mut linha = String::new();
+                r.read_line(&mut linha).unwrap();
+                if linha == "\r\n" || linha.is_empty() {
+                    break;
+                }
+                if let Some(v) = linha.to_ascii_lowercase().strip_prefix("content-length:") {
+                    tamanho = v.trim().parse().unwrap();
+                }
+            }
+            let mut corpo = vec![0; tamanho];
+            r.read_exact(&mut corpo).unwrap();
+            let pedido: Vec<&str> = primeira.split_whitespace().take(2).collect();
+            let pedido = pedido.join(" ");
+            let (status, resp) = if pedido.starts_with("POST /token") {
+                (200, json!({"access_token": "tok", "expires_in": 3600}))
+            } else {
+                let _ = tx.send((pedido, serde_json::from_slice(&corpo).unwrap_or_default()));
+                fila.next().map(|v| (200, v)).unwrap_or((500, json!({"error": "fila vazia"})))
+            };
+            let c = resp.to_string();
+            let _ = write!(s, "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{c}", c.len());
+        }
+    });
+    (url, rx)
+}

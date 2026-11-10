@@ -45,7 +45,12 @@ Tarefas:\n\
 Recados:\n\
 - \"Avisa o Fulano que…\", \"fala pra todo mundo que…\" → recado (não é tarefa: ninguém é cobrado). Com hora (\"amanhã às 8 avisa…\") → quando.\n\
 - O texto do recado vai como quem mandou falaria pro outro, em primeira pessoa (\"chego 10h amanhã\"), sem \"a Fulana disse que\": a mensagem já sai com o nome dela.\n\
-- Quem recebe pode responder (reply) ao recado, e a resposta volta pra quem mandou.\n",
+- Quem recebe pode responder (reply) ao recado, e a resposta volta pra quem mandou.\n\n\
+Agenda (reuniões ficam na agenda Google da {nome}, com convite):\n\
+- \"Marca reunião com…\" → marcar_reuniao (quem fala já vai). Sem hora definida, chame livres_juntos antes e ofereça 2 ou 3 opções.\n\
+- marcar_reuniao confere se alguém está ocupado; se voltar NÃO marquei, conte quem e pergunte. forcar = true só se a pessoa disser que quer assim mesmo.\n\
+- \"O que tenho essa semana?\", \"o Fulano tá livre quinta?\" → ver_agenda: as reuniões que você marcou (com quem confirmou) e o ocupado da agenda pessoal, sem detalhes.\n\
+- Desmarcar: só quem marcou ou o chefe, com o id que vem no ver_agenda.\n",
         equipe.join("\n")
     )
 }
@@ -66,6 +71,7 @@ fn enum_todos(membros: &[Membro]) -> Value {
 
 pub fn ferramentas(membros: &[Membro]) -> Value {
     let id = json!({"type": "integer", "description": "o #id da tarefa"});
+    let quem = json!({"type": "array", "items": {"type": "string", "enum": enum_todos(membros)}, "description": "ids de quem vai além de quem fala; [\"todos\"] = a equipe toda"});
     let filtro = "minhas (o que quem fala tem que fazer), pedi (o que pediu pros outros), equipe (tudo da equipe, menos lembrete pessoal dos outros) ou de:<id> (o que aquele membro tem que fazer)";
     json!([
         {"name": "ver_tarefas", "description": "Lista as tarefas abertas, com id, quem pediu, quem faz, prazo e cobranças sem resposta.",
@@ -92,6 +98,31 @@ pub fn ferramentas(membros: &[Membro]) -> Value {
          "input_schema": {"type": "object", "properties": {"id": id, "motivo": {"type": "string"}}, "required": ["id", "motivo"]}},
         {"name": "cancelar", "description": "Quem pediu cancela a tarefa (ou o próprio lembrete); quem ia fazer é avisado.",
          "input_schema": {"type": "object", "properties": {"id": id}, "required": ["id"]}},
+        {"name": "marcar_reuniao", "description": "Marca reunião na agenda da equipe: convite do Google pra quem tem e-mail e aviso aqui pra todos. Quem fala já vai.",
+         "input_schema": {"type": "object", "properties": {
+             "titulo": {"type": "string"},
+             "inicio": {"type": "string", "description": "AAAA-MM-DDTHH:MM"},
+             "duracao_min": {"type": ["integer", "null"], "description": "null = a duração padrão da equipe"},
+             "quem": quem.clone(),
+             "local": {"type": ["string", "null"], "description": "lugar ou link da chamada"},
+             "descricao": {"type": ["string", "null"]},
+             "forcar": {"type": ["boolean", "null"], "description": "true = marca mesmo com alguém ocupado (só se pediram)"}},
+          "required": ["titulo", "inicio", "quem"]}},
+        {"name": "livres_juntos", "description": "Horários livres em comum (livre/ocupado da agenda de cada um + as reuniões já marcadas), em dia útil e no horário de reunião da equipe.",
+         "input_schema": {"type": "object", "properties": {
+             "quem": quem,
+             "inicio": {"type": ["string", "null"], "description": "AAAA-MM-DD; null = agora"},
+             "dias": {"type": ["integer", "null"], "description": "quantos dias olhar (padrão 5, até 14)"},
+             "duracao_min": {"type": ["integer", "null"]},
+             "fim_de_semana": {"type": ["boolean", "null"], "description": "true = inclui sábado e domingo"}},
+          "required": ["quem"]}},
+        {"name": "ver_agenda", "description": "As reuniões de um membro (as que você marcou, com quem confirmou e o id) e o ocupado da agenda pessoal dele, sem detalhes.",
+         "input_schema": {"type": "object", "properties": {
+             "quem": {"type": "string", "enum": enum_para(membros), "description": "id do membro; eu (o padrão) = quem fala"},
+             "inicio": {"type": ["string", "null"], "description": "AAAA-MM-DD ou AAAA-MM-DDTHH:MM; null = agora"},
+             "fim": {"type": ["string", "null"], "description": "AAAA-MM-DD (inclusive); null = 7 dias depois do inicio"}}}},
+        {"name": "desmarcar_reuniao", "description": "Desmarca uma reunião (só quem marcou ou o chefe); o Google avisa os convidados e você avisa aqui.",
+         "input_schema": {"type": "object", "properties": {"id": {"type": "string", "description": "o id que vem no ver_agenda"}}, "required": ["id"]}},
     ])
 }
 
