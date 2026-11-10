@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 /// quanto tempo o link do convite vale
 pub const CONVITE_S: i64 = 7 * 86400;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Membro {
     pub nome: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

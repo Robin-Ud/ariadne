@@ -79,6 +79,17 @@ impl Roteador {
         Ok(())
     }
 
+    /// `--membro … --email`/`--chefe` grava no disco com o bot rodando: se `membros/` mudou desde o
+    /// último `recarrega`, relê (o e-mail novo vale na próxima reunião, sem reiniciar)
+    pub fn confere_membros(&mut self) -> R<()> {
+        let lista = membros::listar(&self.dir)?;
+        if lista != atendente::trava(&self.equipe).membros {
+            println!("membros mudaram no disco: relendo");
+            self.recarrega()?;
+        }
+        Ok(())
+    }
+
     /// um `Claude` por atendente (a chave é relida a cada 401); sem `anthropic_key`, None
     fn claude(&self) -> Option<Claude> {
         let mut c = Claude::de_arquivo(argos::rede::agente(), &Path::new(&self.config.cred_dir).join("anthropic_key")).ok()?;
@@ -127,6 +138,9 @@ impl Roteador {
         println!("{}: rodando com {} membro(s) pareado(s)", self.config.nome(), self.filas.len());
         let mut offset: Option<i64> = None;
         loop {
+            if let Err(e) = self.confere_membros() {
+                println!("membros: {e:?}");
+            }
             let params = json!({"offset": offset, "timeout": 30, "allowed_updates": ["message", "callback_query"]});
             let updates = match self.tg.call("getUpdates", 40, params) {
                 Ok(u) => u.as_array().cloned().unwrap_or_default(),

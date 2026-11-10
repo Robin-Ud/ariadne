@@ -175,6 +175,35 @@ fn link_pareia_e_cada_um_tem_o_seu_atendente() {
     assert!(c["text"].as_str().unwrap().contains("Ainda não tenho a chave do modelo"), "{c}");
 }
 
+#[test]
+fn email_e_chefe_novos_valem_sem_reiniciar() {
+    let tmp = TempDir::new("ariadne_roteador.");
+    std::fs::write(tmp.0.join("configs.json"), "{}").unwrap();
+    let agora = argos::util::agora().timestamp();
+    membros::cadastrar(&tmp.0, "Fulana Souza", None, agora).unwrap();
+    membros::parear(&tmp.0, "fulana-souza", 100).unwrap();
+    let (url, _rx) = telegram_falso();
+    let mut tg = argos::rede::Telegram::new(argos::rede::agente(), "x");
+    tg.base = url;
+    let mut r = Roteador::new(tmp.0.clone(), config::load_de(&tmp.0).unwrap(), tg).unwrap();
+    let email = |r: &Roteador| crate::atendente::trava(&r.equipe).membros[0].email.clone();
+    assert_eq!(email(&r), None);
+
+    // nada mudou: fica como está
+    r.confere_membros().unwrap();
+    assert_eq!(r.atendidos(), [100]);
+
+    // `--membro "Fulana Souza" --email x --chefe` com o bot rodando
+    let mut m = membros::ler(&tmp.0, "fulana-souza").unwrap();
+    m.email = Some("fulana@exemplo.com".into());
+    m.chefe = true;
+    membros::gravar(&tmp.0, &m).unwrap();
+    r.confere_membros().unwrap();
+    assert_eq!(email(&r).as_deref(), Some("fulana@exemplo.com"));
+    assert!(crate::atendente::trava(&r.equipe).membros[0].chefe);
+    assert_eq!(r.atendidos(), [100]);
+}
+
 // --- conversa com o modelo (falso) ---
 
 use crate::falso::claude_falso;

@@ -29,8 +29,8 @@ ariadne --checar-config                       # config, token (getMe), chave e m
 ariadne                                       # roda (systemd na VM)
 ```
 
-Membro já pareado com `--email` ou `--chefe` só é atualizado, sem link novo. Link novo (celular
-novo) é com `--membro "Nome"` sozinho.
+Membro já pareado com `--email` ou `--chefe` só é atualizado, sem link novo, e o bot rodando pega a
+mudança em até 30 s. Link novo (celular novo) é com `--membro "Nome"` sozinho.
 
 `--chefe` marca o membro como chefe (pode pôr depois, rodando de novo com o mesmo nome): o pedido
 dele chega em destaque e ele recebe o resumo quinzenal (ver Chefe).
