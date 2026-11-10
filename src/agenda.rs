@@ -57,6 +57,18 @@ fn status(e: &Value, email: &str) -> &'static str {
     }
 }
 
+/// o evento com início e fim no fuso configurado: o Google devolve no fuso da agenda dela, que numa
+/// conta nova é UTC (sem isso, 18h30 aparece como 21h30)
+fn no_fuso(e: &Value) -> Value {
+    let mut e = e.clone();
+    for k in ["start", "end"] {
+        if let Some(dt) = e.pointer(&format!("/{k}/dateTime")).and_then(Value::as_str).and_then(|s| from_iso(s).ok()) {
+            e[k]["dateTime"] = json!(argos::util::iso(&dt.with_timezone(&argos::util::fuso()).fixed_offset()));
+        }
+    }
+    e
+}
+
 /// os intervalos (a, b) que caem dentro de um dos eventos
 fn sobrepoe(a: &Dt, b: &Dt, eventos: &[Value]) -> bool {
     eventos.iter().any(|e| {
@@ -259,7 +271,7 @@ impl Atendente {
                 .map(|(_, n, m)| format!("{n}{}", m.as_deref().map(|m| status(e, m)).unwrap_or_default()))
                 .collect();
             let de = nomes.iter().find(|n| n.0 == de_do_evento(e)).map(|n| n.1.as_str()).unwrap_or("?");
-            linhas.push(format!("{} · com {} · marcou: {de} [id {}]", agenda_line(e)?, quem.join(", "), e.get("id").and_then(Value::as_str).unwrap_or("?")));
+            linhas.push(format!("{} · com {} · marcou: {de} [id {}]", agenda_line(&no_fuso(e))?, quem.join(", "), e.get("id").and_then(Value::as_str).unwrap_or("?")));
         }
         let mut r = if linhas.is_empty() { format!("nenhuma reunião marcada por mim com {nome} nesse período") } else { format!("reuniões de {nome}:\n{}", linhas.join("\n")) };
         // o resto da agenda dele(a), só como ocupado
@@ -342,7 +354,7 @@ impl Atendente {
             return Err(Erro::Valor(format!("só quem marcou ({nome}) ou o chefe desmarca")));
         }
         self.google()?.delete_avisando(id.trim())?;
-        let linha = agenda_line(&e)?;
+        let linha = agenda_line(&no_fuso(&e))?;
         let msg = format!("🚫 <b>{}</b> desmarcou: {}", esc(&eu), esc(&linha));
         let mut avisei = vec![];
         let eu_slug = self.slug.clone();

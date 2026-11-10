@@ -861,7 +861,8 @@ fn ver_agenda_e_livres_juntos() {
 
 #[test]
 fn desmarcar_so_quem_marcou_e_avisa_os_outros() {
-    let ev = reuniao("ev1", "beltrano", "beltrano,fulana-souza", "2030-01-15T10:00:00-03:00", "2030-01-15T11:00:00-03:00", json!([]));
+    // a agenda dela em UTC (conta nova): o Google devolve 13h Z, que aqui é 10h
+    let ev = reuniao("ev1", "beltrano", "beltrano,fulana-souza", "2030-01-15T13:00:00Z", "2030-01-15T14:00:00Z", json!([]));
     let (_tmp, r, rx, grx, mut a) = agenda_de_teste(Some(vec![ev.clone(), ev, json!({})]));
     let grx = grx.unwrap();
     let e = a.ferramenta("desmarcar_reuniao", &json!({"id": "ev1"})).unwrap_err().to_string();
