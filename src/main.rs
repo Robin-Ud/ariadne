@@ -39,6 +39,19 @@ fn cli_membro(nome: &str, opcoes: &[&str]) -> R<()> {
     }
     let dir = config::data_dir();
     let c = load(&dir)?;
+    // já pareado e só mudando e-mail ou chefe: sem link novo (o link é pra celular novo: --membro só com o nome)
+    if !opcoes.is_empty() {
+        if let Some(mut m) = membros::listar(&dir)?.into_iter().find(|m| m.slug == membros::slug_de(nome.trim()) && m.chat_id.is_some()) {
+            if let Some(e) = email.map(str::trim).filter(|e| !e.is_empty()) {
+                m.email = Some(e.to_string());
+            }
+            m.chefe |= chefe;
+            membros::gravar(&dir, &m)?;
+            println!("{} ({}): atualizado{}{} (continua pareado; link novo só com --membro \"{}\")", m.nome, m.slug,
+                     m.email.as_deref().map(|e| format!(" · {e}")).unwrap_or_default(), if m.chefe { " · chefe" } else { "" }, m.nome);
+            return Ok(());
+        }
+    }
     let (mut m, codigo) = membros::cadastrar(&dir, nome, email, agora_s())?;
     if chefe {
         m = membros::marcar_chefe(&dir, &m.slug, true)?;
