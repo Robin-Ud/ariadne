@@ -82,6 +82,23 @@ pub struct Detalhe {
     pub em: String,
 }
 
+/// trabalho com começo e fim; pode ser de uma fazenda só. O id é único dentro do cliente
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Projeto {
+    pub id: String,
+    pub nome: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fazenda: Option<String>,
+    pub criado: String,
+    /// slug de quem criou
+    pub por: String,
+    /// quando encerrou; None = ativo
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encerrado: Option<String>,
+    #[serde(flatten)]
+    pub resto: Map<String, Value>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Cliente {
     pub id: String,
@@ -99,6 +116,8 @@ pub struct Cliente {
     pub contatos: Vec<Contato>,
     #[serde(default)]
     pub detalhes: Vec<Detalhe>,
+    #[serde(default)]
+    pub projetos: Vec<Projeto>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub arquivado: bool,
     #[serde(flatten)]
@@ -212,6 +231,7 @@ impl Clientes {
                     estilo: None,
                     contatos: vec![],
                     detalhes: vec![],
+                    projetos: vec![],
                     arquivado: false,
                     resto: Map::new(),
                 };
@@ -273,6 +293,37 @@ impl Clientes {
         Ok((id, novo))
     }
 
+    /// Projeto novo (ou reabre o encerrado de mesmo id). A fazenda tem que ser do cliente. Devolve o id.
+    pub fn projeto_novo(&mut self, cliente: &str, nome: &str, fazenda: Option<&str>, por: &str, now: &Dt) -> R<String> {
+        let nome = texto_ou_none(nome).ok_or_else(|| Erro::Valor("projeto sem nome".into()))?;
+        let id = slug_de(&nome);
+        if id.is_empty() {
+            return Err(Erro::Valor(format!("nome sem letra nem número: {nome:?}")));
+        }
+        let c = self.cliente_mut(cliente)?;
+        let fazenda = match fazenda.and_then(texto_ou_none) {
+            None => None,
+            Some(f) => Some(c.fazendas.iter().find(|x| mesmo(&x.nome, &f)).map(|x| x.nome.clone()).ok_or_else(|| Erro::Valor(format!("{} não tem a fazenda {f:?}: cadastre antes (salvar_cliente)", c.nome)))?),
+        };
+        match c.projetos.iter_mut().find(|p| p.id == id) {
+            Some(p) if p.encerrado.is_none() => return Err(Erro::Valor(format!("{} já tem o projeto {:?} (id {id})", c.nome, p.nome))),
+            Some(p) => {
+                p.encerrado = None;
+                p.fazenda = fazenda.or(p.fazenda.take());
+            }
+            None => c.projetos.push(Projeto { id: id.clone(), nome, fazenda, criado: iso(now), por: por.to_string(), encerrado: None, resto: Map::new() }),
+        }
+        Ok(id)
+    }
+
+    pub fn encerrar_projeto(&mut self, cliente: &str, projeto: &str, now: &Dt) -> R<()> {
+        let c = self.cliente_mut(cliente)?;
+        let nome = c.nome.clone();
+        let p = c.projetos.iter_mut().find(|p| p.id == slug_de(projeto) && p.encerrado.is_none()).ok_or_else(|| Erro::Valor(format!("{nome} não tem projeto ativo {projeto:?}")))?;
+        p.encerrado = Some(iso(now));
+        Ok(())
+    }
+
     pub fn anotar(&mut self, id: &str, texto: &str, por: &str, now: &Dt) -> R<()> {
         let texto = texto_ou_none(texto).ok_or_else(|| Erro::Valor("detalhe vazio".into()))?;
         let c = self.cliente_mut(id)?;
@@ -289,11 +340,25 @@ fn texto_fazendas(c: &Cliente) -> String {
     }).collect::<Vec<_>>().join(", ")
 }
 
-/// a linha do cliente no system: "- Nome (`id`): fazendas Boa Vista, Santa Rita"
+impl Cliente {
+    pub fn projetos_ativos(&self) -> impl Iterator<Item = &Projeto> {
+        self.projetos.iter().filter(|p| p.encerrado.is_none())
+    }
+}
+
+/// a linha do cliente no system: "- Nome (`id`): fazendas Boa Vista, Santa Rita · projetos Pivô (`pivo`)"
 pub fn linha(c: &Cliente) -> String {
-    let mut l = format!("- {} (`{}`)", c.nome, c.id);
+    let mut partes = vec![];
     if !c.fazendas.is_empty() {
-        l += &format!(": fazendas {}", c.fazendas.iter().map(|f| f.nome.as_str()).collect::<Vec<_>>().join(", "));
+        partes.push(format!("fazendas {}", c.fazendas.iter().map(|f| f.nome.as_str()).collect::<Vec<_>>().join(", ")));
+    }
+    let ps: Vec<String> = c.projetos_ativos().map(|p| format!("{} (`{}`)", p.nome, p.id)).collect();
+    if !ps.is_empty() {
+        partes.push(format!("projetos {}", ps.join(", ")));
+    }
+    let mut l = format!("- {} (`{}`)", c.nome, c.id);
+    if !partes.is_empty() {
+        l += &format!(": {}", partes.join(" · "));
     }
     l
 }
@@ -330,6 +395,16 @@ pub fn ficha(c: &Cliente, nome: impl Fn(&str) -> String, extras: &[String]) -> S
         l.push(format!("Contatos: {}", esc(&k.join(", "))));
     }
     let mut blocos = vec![l.join("\n")];
+    let ps: Vec<String> = c.projetos_ativos().map(|p| format!("• {}{}", esc(&p.nome), p.fazenda.as_deref().map(|f| format!(" ({})", esc(f))).unwrap_or_default())).collect();
+    let encerrados = c.projetos.len() - ps.len();
+    if !ps.is_empty() || encerrados > 0 {
+        let mut b = vec!["<b>Projetos</b>".to_string()];
+        b.extend(ps);
+        if encerrados > 0 {
+            b.push(format!("<i>{encerrados} encerrado{}</i>", if encerrados == 1 { "" } else { "s" }));
+        }
+        blocos.push(b.join("\n"));
+    }
     blocos.extend(extras.iter().filter(|e| !e.is_empty()).cloned());
     if !c.detalhes.is_empty() {
         let pula = c.detalhes.len().saturating_sub(DETALHES_NA_FICHA);
@@ -385,6 +460,20 @@ impl Atendente {
                 eq.clientes.anotar(&id, &arg_str(args, "texto")?, &self.slug, &agora())?;
                 eq.gravar_clientes()?;
                 Ok(format!("anotado em {}", eq.clientes.cliente(&id)?.nome))
+            }
+            "projeto_cliente" => {
+                let (cliente, nome) = (arg_str(args, "cliente")?, arg_str(args, "nome")?);
+                let encerrar = args.get("encerrar").and_then(Value::as_bool).unwrap_or(false);
+                let mut eq = trava(&self.equipe);
+                let r = if encerrar {
+                    eq.clientes.encerrar_projeto(&cliente, &nome, &agora())?;
+                    format!("projeto {nome} encerrado")
+                } else {
+                    let id = eq.clientes.projeto_novo(&cliente, &nome, opcional(args, "fazenda").as_deref(), &self.slug, &agora())?;
+                    format!("projeto {nome} criado (id {id})")
+                };
+                eq.gravar_clientes()?;
+                Ok(format!("{r} em {}", eq.clientes.cliente(&cliente)?.nome))
             }
             "ver_cliente" => {
                 let eq = trava(&self.equipe);

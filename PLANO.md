@@ -213,9 +213,10 @@ na viagem": agora é um cadastro que tarefa, reunião e viagem citam pelo id.
   por, em}`, só cresce).
 - Qualquer membro cadastra, muda e anota; só o chefe arquiva.
 - Os clientes ativos vão no system, como os membros (o system muda quando muda o cadastro).
+- Projeto: do cliente, com fazenda opcional (tem que ser dele), id único dentro do cliente.
+  Encerrar guarda a data; criar de novo com o mesmo nome reabre.
 
 Falta:
-- Projetos do cliente (podem citar uma fazenda).
 - Tarefa ligada a cliente ou projeto (`cliente`/`projeto` no `resto`, filtro `cliente:<id>`).
 - Reunião com cliente: os contatos com e-mail em `attendees`, `ariadne_cliente` no evento, Meet
   opcional (`conferenceData.createRequest`; o argos já manda `conferenceDataVersion=1`).

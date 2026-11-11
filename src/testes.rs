@@ -974,3 +974,31 @@ fn anotar_e_ver_cliente_e_o_system_lista_os_ativos() {
     let hoje = argos::util::agora().format("%d/%m/%y");
     assert!(ficha.ends_with(&format!("<b>Detalhes</b>\n{hoje} Beltrano: prefere WhatsApp a e-mail")), "{ficha}");
 }
+
+#[test]
+fn projeto_do_cliente_cita_fazenda_dele_e_encerra() {
+    let (tmp, r, _rx, _crx) = time_de_teste(vec![]);
+    let mut a = atendente_de(&r, "fulana-souza", 100);
+    a.ferramenta("salvar_cliente", &json!({"nome": "João Pereira", "fazendas_add": [{"nome": "Boa Vista"}]})).unwrap();
+    let novo = |nome: &str, fazenda: Value| json!({"cliente": "joao-pereira", "nome": nome, "fazenda": fazenda});
+    assert_eq!(a.ferramenta("projeto_cliente", &novo("Pivô central", json!("boa vista"))).unwrap(), "projeto Pivô central criado (id pivo-central) em João Pereira");
+    assert!(a.ferramenta("projeto_cliente", &novo("Pivô Central", Value::Null)).unwrap_err().to_string().contains("já tem o projeto"));
+    assert!(a.ferramenta("projeto_cliente", &novo("Silagem", json!("Santa Rita"))).unwrap_err().to_string().contains("não tem a fazenda"));
+    a.ferramenta("projeto_cliente", &novo("Silagem", Value::Null)).unwrap();
+    {
+        let eq = trava(&r.equipe);
+        let c = eq.clientes.cliente("joao-pereira").unwrap();
+        assert_eq!((c.projetos[0].fazenda.as_deref(), c.projetos[0].por.as_str()), (Some("Boa Vista"), "fulana-souza"), "fazenda com o nome do cadastro");
+        assert_eq!(clientes::linha(c), "- João Pereira (`joao-pereira`): fazendas Boa Vista · projetos Pivô central (`pivo-central`), Silagem (`silagem`)");
+    }
+
+    a.ferramenta("projeto_cliente", &json!({"cliente": "joao-pereira", "nome": "silagem", "encerrar": true})).unwrap();
+    assert!(a.ferramenta("projeto_cliente", &json!({"cliente": "joao-pereira", "nome": "silagem", "encerrar": true})).is_err(), "já encerrado");
+    let ficha = a.ferramenta("ver_cliente", &json!({"id": "joao-pereira"})).unwrap();
+    assert!(ficha.ends_with("Fazendas: Boa Vista\n\n<b>Projetos</b>\n• Pivô central (Boa Vista)\n<i>1 encerrado</i>"), "{ficha}");
+    let c = clientes::carregar(&clientes::arquivo(&tmp.0)).unwrap().clientes.remove(0);
+    assert!(c.projetos[1].encerrado.is_some(), "gravado");
+    // criar de novo reabre
+    a.ferramenta("projeto_cliente", &novo("Silagem", Value::Null)).unwrap();
+    assert!(trava(&r.equipe).clientes.clientes[0].projetos[1].encerrado.is_none());
+}

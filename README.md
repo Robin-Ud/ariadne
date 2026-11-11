@@ -153,7 +153,10 @@ conversa:
   contatos (nome, e-mail, telefone). Mudar mexe só no que foi dito.
 - **Anotar:** "anota no João que ele prefere WhatsApp". O detalhe guarda quem anotou e quando, e só
   cresce.
-- **Ver:** "como é o João?" devolve a ficha: o cadastro e os 10 detalhes mais novos.
+- **Projetos:** "começamos o pivô central na Boa Vista do João". O projeto é do cliente e pode
+  citar uma fazenda dele. "O pivô acabou" encerra; criar de novo com o mesmo nome reabre.
+- **Ver:** "como é o João?" devolve a ficha: o cadastro, os projetos ativos e os 10 detalhes mais
+  novos.
 - **Arquivar:** só o chefe. Cliente arquivado some da lista que ela conhece, mas a ficha continua.
 
 O id do cliente é o nome sem acento nem espaço (`joao-pereira`). Ela conhece os clientes ativos pela
@@ -199,7 +202,7 @@ membros/<slug>/chat_id              0600, depois
 membros/<slug>/conversa.jsonl       conversa recente (24 h)
 dados/estado.json                   tarefas abertas, recados agendados
 dados/historico.jsonl               tarefa fechada (feita, recusada, cancelada), uma por linha
-dados/clientes.json                 cadastro de clientes: fazendas, perfil, contatos, detalhes
+dados/clientes.json                 cadastro de clientes: fazendas, perfil, contatos, detalhes, projetos
 ```
 
 ## Licença

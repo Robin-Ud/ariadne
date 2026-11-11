@@ -62,6 +62,7 @@ Clientes (nome e o id que vai nas ferramentas):\n{lista}\n\n\
 - Desde quando é cliente: AAAA, AAAA-MM ou AAAA-MM-DD. Flexibilidade: baixa, media ou alta. Estilo: como ele é de lidar, em poucas palavras.\n\
 - \"Anota no Fulano que…\" → anotar_cliente, o detalhe como um fato curto.\n\
 - \"Como é o Fulano?\", \"o que tem do Fulano?\" → ver_cliente.\n\
+- \"Começamos o projeto X no Fulano\" → projeto_cliente; \"o projeto X acabou\" → projeto_cliente com encerrar = true. Fazenda do projeto só se foi dita, e tem que ser do cliente.\n\
 - Ache o cliente pelo nome ou pela fazenda na lista acima. Não invente cliente: se não estiver na lista, pergunte se é novo.\n",
         equipe.join("\n")
     )
@@ -163,7 +164,14 @@ pub fn ferramentas(membros: &[Membro], cs: &Clientes) -> Value {
              "arquivar": {"type": ["boolean", "null"], "description": "true = arquiva, false = volta (só o chefe)"}}}},
         {"name": "anotar_cliente", "description": "Anota um detalhe sobre o cliente (fica com quem anotou e quando).",
          "input_schema": {"type": "object", "properties": {"id": cliente.clone(), "texto": {"type": "string"}}, "required": ["id", "texto"]}},
-        {"name": "ver_cliente", "description": "A ficha do cliente, já no formato de mandar: fazendas, desde quando, flexibilidade, estilo, contatos e os detalhes mais novos.",
+        {"name": "projeto_cliente", "description": "Cria um projeto do cliente (pode ser de uma fazenda dele) ou encerra um ativo.",
+         "input_schema": {"type": "object", "properties": {
+             "cliente": cliente.clone(),
+             "nome": {"type": "string", "description": "nome do projeto (pra encerrar, o nome ou o id que está na lista)"},
+             "fazenda": {"type": ["string", "null"], "description": "nome de uma fazenda do cliente"},
+             "encerrar": {"type": ["boolean", "null"], "description": "true = encerra o projeto"}},
+          "required": ["cliente", "nome"]}},
+        {"name": "ver_cliente", "description": "A ficha do cliente, já no formato de mandar: fazendas, desde quando, flexibilidade, estilo, contatos, projetos e os detalhes mais novos.",
          "input_schema": {"type": "object", "properties": {"id": cliente}, "required": ["id"]}},
     ])
 }

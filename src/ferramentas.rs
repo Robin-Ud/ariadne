@@ -52,7 +52,7 @@ impl Atendente {
                 self.adiar(id_de(args)?, &alvo, &agora())
             }
             "marcar_reuniao" | "ver_agenda" | "livres_juntos" | "desmarcar_reuniao" => self.agenda(nome, args),
-            "salvar_cliente" | "anotar_cliente" | "ver_cliente" => self.clientes(nome, args),
+            "salvar_cliente" | "anotar_cliente" | "projeto_cliente" | "ver_cliente" => self.clientes(nome, args),
             _ => Err(Erro::Valor(format!("ferramenta desconhecida: {nome}"))),
         }
     }
