@@ -1046,3 +1046,71 @@ fn tarefa_ligada_a_cliente_e_projeto() {
     let h = std::fs::read_to_string(estado::historico(&tmp.0)).unwrap();
     assert!(h.contains(r#""cliente":"joao-pereira""#) && h.contains(r#""projeto":"pivo-central""#), "{h}");
 }
+
+/// o João Pereira com a João (e-mail) e a Maria (sem e-mail)
+fn cliente_de_teste(a: &mut crate::atendente::Atendente) {
+    a.ferramenta("salvar_cliente", &json!({"nome": "João Pereira", "contatos_add": [{"nome": "João", "email": "cliente@exemplo.com"}, {"nome": "Maria"}]})).unwrap();
+}
+
+#[test]
+fn reuniao_com_cliente_convida_os_contatos_e_cria_o_meet() {
+    let livre = json!({"calendars": {"fulana@exemplo.com": {"busy": []}}});
+    let criado = json!({"id": "ev1", "hangoutLink": "https://meet.google.com/abc-defg-hij"});
+    let (_tmp, _r, _rx, grx, mut a) = agenda_de_teste(Some(vec![livre.clone(), criado, livre, json!({"id": "ev2"})]));
+    let grx = grx.unwrap();
+    cliente_de_teste(&mut a);
+
+    let pedido = json!({"titulo": "Visita", "inicio": "2030-01-15T10:00", "quem": [], "cliente": "joao-pereira", "contatos": ["joão", "maria"], "meet": true});
+    let res = a.ferramenta("marcar_reuniao", &pedido).unwrap();
+    assert_eq!(res, "marcada (id ev1, não mostre). Mande só este bloco, como está:\n📅 Marcado\n<b>ter 15/01 · 10h–11h</b>\nVisita\nsó você\n\
+                     🌾 João Pereira: João, Maria\n🎥 https://meet.google.com/abc-defg-hij\n\
+                     <i>Convite no seu e-mail; convite pra João; Maria sem e-mail, repasse o link: https://meet.google.com/abc-defg-hij.</i>");
+    let (p, fb) = grx.recv().unwrap();
+    assert_eq!((p.as_str(), &fb["items"]), ("POST /freeBusy", &json!([{"id": "fulana@exemplo.com"}])), "o cliente fica fora do livre/ocupado");
+    let (p, ev) = grx.recv().unwrap();
+    assert_eq!(p, "POST /calendars/primary/events?sendUpdates=all&conferenceDataVersion=1");
+    assert_eq!(ev["attendees"], json!([{"email": "fulana@exemplo.com"}, {"email": "cliente@exemplo.com"}]));
+    assert_eq!(ev["extendedProperties"]["private"]["ariadne_cliente"], "joao-pereira");
+    assert_eq!(ev["conferenceData"]["createRequest"]["conferenceSolutionKey"]["type"], "hangoutsMeet");
+    assert_eq!(ev["conferenceData"]["createRequest"]["requestId"].as_str().unwrap().len(), 12);
+
+    // sem meet nem contatos: vão os que têm e-mail, e nada de conferenceData
+    let res = a.ferramenta("marcar_reuniao", &json!({"titulo": "Retorno", "inicio": "2030-01-16T10:00", "quem": [], "cliente": "joao-pereira"})).unwrap();
+    assert!(res.contains("\n🌾 João Pereira: João\n<i>Convite no seu e-mail; convite pra João.</i>"), "{res}");
+    grx.recv().unwrap();
+    let (_, ev) = grx.recv().unwrap();
+    assert!(ev.get("conferenceData").is_none());
+    assert!(a.ferramenta("marcar_reuniao", &json!({"titulo": "X", "inicio": "2030-01-16T10:00", "quem": [], "cliente": "joao-pereira", "contatos": ["Pedro"]}))
+        .unwrap_err().to_string().contains("não tem o contato"));
+}
+
+#[test]
+fn sem_google_a_reuniao_com_cliente_devolve_o_link_pra_repassar() {
+    let (_tmp, _r, _rx, _grx, mut a) = agenda_de_teste(None);
+    cliente_de_teste(&mut a);
+    let res = a.ferramenta("marcar_reuniao", &json!({"titulo": "Visita", "inicio": "2030-01-15T10:00", "quem": [], "cliente": "joao-pereira", "meet": true})).unwrap();
+    assert!(res.contains("link pra repassar a João Pereira: https://calendar.google.com/calendar/render?action=TEMPLATE&amp;text=Visita"), "{res}");
+    assert!(!res.contains("🎥"), "sem Google, sem Meet: {res}");
+}
+
+#[test]
+fn ficha_e_agenda_mostram_a_reuniao_do_cliente() {
+    let futuro = argos::util::agora() + chrono::Duration::days(3);
+    let ini = argos::util::iso(&futuro.date_naive().and_hms_opt(10, 0, 0).unwrap().and_local_timezone(argos::util::fuso()).unwrap().fixed_offset());
+    let fim = ini.replace("T10:00", "T11:00");
+    let mut visita = reuniao("ev1", "fulana-souza", "fulana-souza", &ini, &fim, json!([]));
+    visita["summary"] = json!("Visita");
+    visita["extendedProperties"]["private"]["ariadne_cliente"] = json!("joao-pereira");
+    let outra = reuniao("ev2", "fulana-souza", "fulana-souza", &ini.replace("T10:00", "T14:00"), &fim.replace("T11:00", "T15:00"), json!([]));
+    let livre = json!({"calendars": {"fulana@exemplo.com": {"busy": []}}});
+    let (_tmp, _r, _rx, _grx, mut a) = agenda_de_teste(Some(vec![json!({"items": [visita.clone(), outra.clone()]}), json!({"items": [visita, outra]}), livre]));
+    cliente_de_teste(&mut a);
+
+    let ficha = a.ferramenta("ver_cliente", &json!({"id": "joao-pereira"})).unwrap();
+    let (a_, b_) = (argos::util::from_iso(&ini).unwrap(), argos::util::from_iso(&fim).unwrap());
+    let linha = argos::agenda::linha_livre(&a_.naive_local(), &b_.naive_local());
+    assert!(ficha.ends_with(&format!("<b>Próximas reuniões</b>\n• {linha} Visita")), "{ficha}");
+
+    let agenda = a.ferramenta("ver_agenda", &json!({"quem": "eu", "inicio": futuro.format("%Y-%m-%d").to_string(), "fim": futuro.format("%Y-%m-%d").to_string()})).unwrap();
+    assert!(agenda.contains("Visita · cliente João Pereira\n") && agenda.contains("  14h–15h  Planejamento\n"), "{agenda}");
+}

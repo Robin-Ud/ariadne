@@ -7,7 +7,7 @@
 //! não tem e-mail recebe o botão "📅 Salvar na agenda". Sem o `--google-login`, marcar manda só o botão.
 
 use crate::atendente::{trava, Atendente};
-use argos::agenda::{horarios_livres, linha_livre, linhas_livres, parse_janela};
+use argos::agenda::{fold, horarios_livres, linha_livre, linhas_livres, parse_janela};
 use argos::gcal::{link_salvar, GoogleCalendar};
 use argos::rascunho::esc;
 use argos::util::{agora, arg_str, from_iso, fuso, so_data, Dt, Erro, R};
@@ -27,6 +27,11 @@ pub(crate) const BLOCO: &str = "Mande só este bloco, como está:";
 /// quem vai (ids), gravado no evento
 fn quem_do_evento(e: &Value) -> Vec<String> {
     e.pointer("/extendedProperties/private/ariadne_quem").and_then(Value::as_str).unwrap_or_default().split(',').filter(|s| !s.is_empty()).map(String::from).collect()
+}
+
+/// o cliente da reunião (id); vazio = reunião só da equipe
+fn cliente_do_evento(e: &Value) -> &str {
+    e.pointer("/extendedProperties/private/ariadne_cliente").and_then(Value::as_str).unwrap_or_default()
 }
 
 /// quem marcou (id); vazio = evento que não foi ela que marcou
@@ -88,6 +93,12 @@ pub(crate) fn maiuscula(s: &str) -> String {
 /// (slug, primeiro nome, e-mail) de cada um
 type Pessoa = (String, String, Option<String>);
 
+/// o cliente da reunião: id, nome e os contatos que vão (nome, e-mail)
+type DoCliente = (String, String, Vec<(String, Option<String>)>);
+
+/// quantos dias de reunião com o cliente aparecem na ficha
+const DIAS_REUNIOES_CLIENTE: i64 = 30;
+
 impl Atendente {
     /// a agenda da conta dela; sem login, Err (o login pode vir com ela rodando: tenta de novo a cada uso)
     pub fn google(&mut self) -> R<&mut GoogleCalendar> {
@@ -131,6 +142,53 @@ impl Atendente {
         Ok(eq.membros.iter().filter(|m| v.contains(&m.slug)).map(|m| (m.slug.clone(), eq.primeiro_nome(&m.slug), m.email.clone())).collect())
     }
 
+    /// O cliente da reunião e quem dele vai: os `contatos` pedidos, ou todos os que têm e-mail
+    fn cliente_da_reuniao(&self, args: &Value) -> R<Option<DoCliente>> {
+        let id = opcional(args, "cliente");
+        if id.is_empty() {
+            return Ok(None);
+        }
+        let eq = trava(&self.equipe);
+        let c = eq.clientes.cliente(id)?;
+        if c.arquivado {
+            return Err(Erro::Valor(format!("{} está arquivado", c.nome)));
+        }
+        let pedidos: Vec<&str> = args.get("contatos").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
+        let vao = if pedidos.is_empty() {
+            c.contatos.iter().filter(|k| k.email.is_some()).map(|k| (k.nome.clone(), k.email.clone())).collect()
+        } else {
+            pedidos
+                .iter()
+                .map(|p| {
+                    let k = c.contatos.iter().find(|k| fold(k.nome.trim()) == fold(p.trim()));
+                    k.map(|k| (k.nome.clone(), k.email.clone())).ok_or_else(|| Erro::Valor(format!("{} não tem o contato {p:?}: cadastre antes (salvar_cliente)", c.nome)))
+                })
+                .collect::<R<Vec<_>>>()?
+        };
+        Ok(Some((c.id.clone(), c.nome.clone(), vao)))
+    }
+
+    /// "<b>Próximas reuniões</b>\n• qua 14/01 · 15h–16h Visita" (as marcadas com o cliente nos próximos
+    /// dias). Vazio sem Google ou sem reunião; erro do Google vira uma nota, sem derrubar a ficha
+    pub fn reunioes_do_cliente(&mut self, id: &str) -> String {
+        let now = agora();
+        let Ok(g) = self.google() else { return String::new() };
+        let mut evs: Vec<Value> = match g.list_events(&now, &(now + chrono::Duration::days(DIAS_REUNIOES_CLIENTE)), None) {
+            Ok(v) => v.into_iter().filter(|e| cliente_do_evento(e) == id).collect(),
+            Err(e) => return format!("<i>Não consegui ver a agenda ({}).</i>", esc(&e.to_string())),
+        };
+        if evs.is_empty() {
+            return String::new();
+        }
+        evs.sort_by_key(|e| horario(e).map(|h| h.0));
+        let mut l = vec!["<b>Próximas reuniões</b>".to_string()];
+        for e in &evs {
+            let Some((a, b)) = horario(e) else { continue };
+            l.push(format!("• {} {}", esc(&linha_livre(&a, &b)), esc(titulo_do(e))));
+        }
+        l.join("\n")
+    }
+
     fn marcar_reuniao(&mut self, args: &Value) -> R<String> {
         let now = agora();
         let titulo = arg_str(args, "titulo")?.trim().to_string();
@@ -153,6 +211,8 @@ impl Atendente {
         let (local, descricao) = (opcional(args, "local").to_string(), opcional(args, "descricao").to_string());
         let forcar = args.get("forcar").and_then(Value::as_bool).unwrap_or(false);
         let pessoas = self.participantes(args)?;
+        let do_cliente = self.cliente_da_reuniao(args)?;
+        let meet = args.get("meet").and_then(Value::as_bool).unwrap_or(false);
         let eu = trava(&self.equipe).primeiro_nome(&self.slug);
         let com_google = self.google().is_ok();
 
@@ -183,18 +243,36 @@ impl Atendente {
                 "start": {"dateTime": argos::util::iso(&ini), "timeZone": fuso},
                 "end": {"dateTime": argos::util::iso(&fim), "timeZone": fuso},
                 "description": if descricao.is_empty() { assinatura } else { format!("{descricao}\n\n{assinatura}") },
-                "attendees": emails.iter().map(|e| json!({"email": e})).collect::<Vec<_>>(),
+                "attendees": emails.iter().chain(do_cliente.iter().flat_map(|c| c.2.iter().filter_map(|k| k.1.as_ref()))).map(|e| json!({"email": e})).collect::<Vec<_>>(),
                 "guestsCanModify": false,
                 "extendedProperties": {"private": {"ariadne_de": self.slug, "ariadne_quem": pessoas.iter().map(|p| p.0.as_str()).collect::<Vec<_>>().join(",")}},
             });
             if !local.is_empty() {
                 body["location"] = json!(local);
             }
+            if let Some((id, _, _)) = &do_cliente {
+                body["extendedProperties"]["private"]["ariadne_cliente"] = json!(id);
+            }
+            if meet {
+                body["conferenceData"] = json!({"createRequest": {"requestId": crate::membros::codigo_convite()?, "conferenceSolutionKey": {"type": "hangoutsMeet"}}});
+            }
             ev = Some(self.google()?.create_convidando(&body)?);
         }
 
         let quando = esc(&linha_livre(&ini.naive_local(), &fim.naive_local()));
-        let link = link_salvar(&titulo, &ini, &fim, &descricao, &local);
+        let link_meet = ev.as_ref().and_then(|e| e.get("hangoutLink")).and_then(Value::as_str).map(String::from);
+        let link = link_salvar(&titulo, &ini, &fim, &descricao, if local.is_empty() { link_meet.as_deref().unwrap_or_default() } else { &local });
+        // o cliente e o Meet, embaixo do com quem
+        let mut extra = String::new();
+        if let Some((_, nome_c, vao)) = &do_cliente {
+            extra += &format!("\n🌾 {}", esc(nome_c));
+            if !vao.is_empty() {
+                extra += &format!(": {}", esc(&vao.iter().map(|k| k.0.as_str()).collect::<Vec<_>>().join(", ")));
+            }
+        }
+        if let Some(m) = &link_meet {
+            extra += &format!("\n🎥 {}", esc(m));
+        }
         let sobre = if local.is_empty() { esc(&titulo) } else { format!("{} · {}", esc(&titulo), esc(&local)) };
         let com = |slug: &str| {
             let outros: Vec<&str> = pessoas.iter().filter(|p| p.0 != slug).map(|p| p.1.as_str()).collect();
@@ -208,7 +286,7 @@ impl Atendente {
                 continue;
             }
             let cab = if slug == &self.slug { "📅 Marcado".to_string() } else { format!("📅 <b>{}</b> marcou", esc(&eu)) };
-            let mut msg = format!("{cab}\n<b>{quando}</b>\n{sobre}\n{}", com(slug));
+            let mut msg = format!("{cab}\n<b>{quando}</b>\n{sobre}\n{}{extra}", com(slug));
             if convite {
                 msg += "\n<i>Convite no seu e-mail.</i>";
             }
@@ -235,6 +313,25 @@ impl Atendente {
                 }
             }
         }
+        if meet && ev.is_some() && link_meet.is_none() {
+            notas.push("o Google não criou o Meet".to_string());
+        }
+        if let Some((_, nome_c, vao)) = &do_cliente {
+            let com_email: Vec<&str> = vao.iter().filter(|k| k.1.is_some()).map(|k| k.0.as_str()).collect();
+            let sem_email: Vec<&str> = vao.iter().filter(|k| k.1.is_none()).map(|k| k.0.as_str()).collect();
+            if ev.is_some() && !com_email.is_empty() {
+                notas.push(format!("convite pra {}", com_email.join(", ")));
+            }
+            // quem do cliente não recebe o convite ganha o link (o Meet, se tem; senão o Salvar na agenda)
+            let repassa = link_meet.as_deref().unwrap_or(&link);
+            if ev.is_none() {
+                notas.push(format!("link pra repassar a {nome_c}: {repassa}"));
+            } else if vao.is_empty() {
+                notas.push(format!("{nome_c} não tem contato com e-mail, repasse o link: {repassa}"));
+            } else if !sem_email.is_empty() {
+                notas.push(format!("{} sem e-mail, repasse o link: {repassa}", sem_email.join(", ")));
+            }
+        }
         if !fora.is_empty() {
             notas.push(format!("fora do Telegram: {}", fora.join(", ")));
         }
@@ -244,7 +341,7 @@ impl Atendente {
             let resto = if notas.is_empty() { String::new() } else { format!(" Mande só isto, como está:\n{notas}") };
             format!("marcada{id}. O cartão com o botão já chegou pra quem fala: não repita a reunião.{resto}")
         } else {
-            format!("marcada{id}. {BLOCO}\n📅 Marcado\n<b>{quando}</b>\n{sobre}\n{}\n{notas}", com(&self.slug)).trim_end().to_string()
+            format!("marcada{id}. {BLOCO}\n📅 Marcado\n<b>{quando}</b>\n{sobre}\n{}{extra}\n{notas}", com(&self.slug)).trim_end().to_string()
         })
     }
 
@@ -254,11 +351,12 @@ impl Atendente {
             "" | "eu" => self.slug.clone(),
             s => s.to_string(),
         };
-        let (nome, email, nomes) = {
+        let (nome, email, nomes, clientes) = {
             let eq = trava(&self.equipe);
             let m = eq.membro(&alvo).ok_or_else(|| Erro::Valor(format!("{alvo:?} não é da equipe")))?;
             let nomes: Vec<(String, String, Option<String>)> = eq.membros.iter().map(|m| (m.slug.clone(), eq.primeiro_nome(&m.slug), m.email.clone())).collect();
-            (eq.primeiro_nome(&alvo), m.email.clone(), nomes)
+            let clientes: Vec<(String, String)> = eq.clientes.clientes.iter().map(|c| (c.id.clone(), c.nome.clone())).collect();
+            (eq.primeiro_nome(&alvo), m.email.clone(), nomes, clientes)
         };
         let ini = match opcional(args, "inicio") {
             "" => now,
@@ -312,7 +410,10 @@ impl Atendente {
                     .filter_map(|s| nomes.iter().find(|n| &n.0 == s))
                     .map(|(_, n, m)| format!("{n}{}", m.as_deref().map(|m| status(e, m)).unwrap_or_default()))
                     .collect();
-                let com = if outros.is_empty() { String::new() } else { format!(" · com {}", outros.join(", ")) };
+                let mut com = if outros.is_empty() { String::new() } else { format!(" · com {}", outros.join(", ")) };
+                if let Some((_, c)) = clientes.iter().find(|c| c.0 == cliente_do_evento(e)) {
+                    com += &format!(" · cliente {c}");
+                }
                 linhas.push(format!("  {faixa}  {}{}", esc(titulo_do(e)), esc(&com)));
                 let quem_marcou = nomes.iter().find(|n| n.0 == de_do_evento(e)).map(|n| n.1.as_str()).unwrap_or("?");
                 ids.push(format!("{cab} {faixa} {} = {}, marcou {quem_marcou}", titulo_do(e), e.get("id").and_then(Value::as_str).unwrap_or("?")));

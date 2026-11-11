@@ -10,8 +10,8 @@ Usa o [Argos](https://github.com/Robin-Ud/argos) como biblioteca. O plano comple
 [`PLANO.md`](PLANO.md).
 
 > **Estado:** fase 1 (tarefas entre membros, lembretes pessoais, cobrança e recados), fase 2
-> (agenda: reunião com convite, livres juntos) e o cadastro de clientes da fase 3 prontos no código,
-> testados contra Telegram, modelo e Google falsos.
+> (agenda: reunião com convite, livres juntos) e fase 3 (clientes: cadastro, projetos, tarefa e
+> reunião com cliente) prontas no código, testadas contra Telegram, modelo e Google falsos.
 
 ## Pôr no ar
 
@@ -138,8 +138,13 @@ As reuniões ficam na agenda Google dela, que é quem organiza.
   `janela_reuniao` (buraco de 30 min ou mais), tirados do livre/ocupado da agenda pessoal. Fim de
   semana só aparece se tem reunião. O id do evento fica só com ela.
 - **Desmarcar:** só quem marcou ou o chefe. O Google avisa os convidados, e ela avisa aqui.
+- **Com cliente:** "marca com o João quinta 10h, por Meet". Os contatos do cliente com e-mail (ou
+  só os que foram ditos) recebem o convite do Google; o livre/ocupado continua só o da equipe. O
+  Meet é opcional: só quando pedem chamada, online ou Meet, e o link vai no cartão. Contato sem
+  e-mail não recebe nada do Google: ela devolve o link pra alguém repassar (o Meet, ou o "Salvar na
+  agenda"). Na agenda, a reunião aparece com "· cliente João Pereira".
 
-O que é de cada reunião (quem marcou, quem vai) fica no próprio evento, em
+O que é de cada reunião (quem marcou, quem vai, o cliente) fica no próprio evento, em
 `extendedProperties.private`. Nada de agenda vai pro `estado.json`.
 
 ## Clientes
@@ -158,8 +163,9 @@ conversa:
 - **Tarefa do cliente:** "pede pro Beltrano mandar o orçamento do pivô do João". A tarefa leva o
   cliente (e o projeto, se foi dito), chega com "🌾 João Pereira / Pivô central" embaixo e vai assim
   pro histórico. "O que tem aberto do João?" lista as tarefas dele.
-- **Ver:** "como é o João?" devolve a ficha: o cadastro, os projetos ativos, as tarefas abertas e os
-  10 detalhes mais novos.
+- **Ver:** "como é o João?" devolve a ficha: o cadastro, os projetos ativos, as tarefas abertas, as
+  reuniões dos próximos 30 dias e os 10 detalhes mais novos.
+- **Reunião:** ver Agenda, "Com cliente".
 - **Arquivar:** só o chefe. Cliente arquivado some da lista que ela conhece, mas a ficha continua.
 
 O id do cliente é o nome sem acento nem espaço (`joao-pereira`). Ela conhece os clientes ativos pela

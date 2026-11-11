@@ -57,6 +57,7 @@ Agenda (reuniões ficam na agenda Google da {nome}, com convite):\n\
 - marcar_reuniao confere se alguém está ocupado; se voltar NÃO marquei, conte quem e pergunte. forcar = true só se a pessoa disser que quer assim mesmo.\n\
 - \"O que tenho essa semana?\", \"o Fulano tá livre quinta?\" → ver_agenda: por dia, as reuniões que você marcou e os horários livres.\n\
 - Desmarcar: só quem marcou ou o chefe, com o id que vem no ver_agenda. O id é só pra você: nunca mostre.\n\
+- Reunião com cliente (\"marca com o João quinta 10h na fazenda\") → marcar_reuniao com cliente; cliente não vai em quem (quem é só a equipe). Meet só se pedirem chamada, online ou Meet. Se o resultado trouxer link pra repassar, ele já está no bloco.\n\
 - Quando a ferramenta disser \"Mande só este bloco, como está:\", a resposta é só esse bloco, sem mudar nem acrescentar nada (o que vem antes é só pra você). Duas ações, dois blocos, um embaixo do outro.\n\n\
 Clientes (nome e o id que vai nas ferramentas):\n{lista}\n\n\
 - \"Cadastra o cliente…\", \"o Fulano agora tem a fazenda…\", \"o Fulano é bem flexível\" → salvar_cliente só com o que foi dito; o resto fica como está. Cliente novo vai sem id; pra mudar um que existe, mande o id.\n\
@@ -138,7 +139,10 @@ pub fn ferramentas(membros: &[Membro], cs: &Clientes) -> Value {
              "quem": quem.clone(),
              "local": {"type": ["string", "null"], "description": "lugar ou link da chamada"},
              "descricao": {"type": ["string", "null"]},
-             "forcar": {"type": ["boolean", "null"], "description": "true = marca mesmo com alguém ocupado (só se pediram)"}},
+             "forcar": {"type": ["boolean", "null"], "description": "true = marca mesmo com alguém ocupado (só se pediram)"},
+             "cliente": cliente_id(cs, "id do cliente, se a reunião é com um cliente; os contatos dele com e-mail recebem o convite", true),
+             "contatos": {"type": ["array", "null"], "items": {"type": "string"}, "description": "nomes dos contatos do cliente que vão; null = todos os que têm e-mail"},
+             "meet": {"type": ["boolean", "null"], "description": "true = cria o link do Google Meet (só se pediram chamada, online ou Meet)"}},
           "required": ["titulo", "inicio", "quem"]}},
         {"name": "livres_juntos", "description": "Horários livres em comum (livre/ocupado da agenda de cada um + as reuniões já marcadas), em dia útil e no horário de reunião da equipe.",
          "input_schema": {"type": "object", "properties": {
@@ -178,7 +182,7 @@ pub fn ferramentas(membros: &[Membro], cs: &Clientes) -> Value {
              "fazenda": {"type": ["string", "null"], "description": "nome de uma fazenda do cliente"},
              "encerrar": {"type": ["boolean", "null"], "description": "true = encerra o projeto"}},
           "required": ["cliente", "nome"]}},
-        {"name": "ver_cliente", "description": "A ficha do cliente, já no formato de mandar: fazendas, desde quando, flexibilidade, estilo, contatos, projetos, tarefas abertas e os detalhes mais novos.",
+        {"name": "ver_cliente", "description": "A ficha do cliente, já no formato de mandar: fazendas, desde quando, flexibilidade, estilo, contatos, projetos, tarefas abertas, próximas reuniões e os detalhes mais novos.",
          "input_schema": {"type": "object", "properties": {"id": cliente}, "required": ["id"]}},
     ])
 }

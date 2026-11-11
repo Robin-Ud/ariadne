@@ -25,8 +25,9 @@ Mapa:
   projetos), `salvar_cliente`/`anotar_cliente`/`projeto_cliente`/`ver_cliente`; os ativos (com os
   projetos ativos) vão no system.
 - `recados.rs`: recado na hora ou agendado (sai no `tick` de quem recebe).
-- `agenda.rs`: reunião na agenda Google dela (convite, `extendedProperties.private` com quem marcou e
-  quem vai), livres juntos pelo freeBusy, ver e desmarcar. `google()` cria o `GoogleCalendar` no
+- `agenda.rs`: reunião na agenda Google dela (convite, `extendedProperties.private` com quem marcou,
+  quem vai e o cliente), livres juntos pelo freeBusy, ver e desmarcar. Reunião com cliente: os
+  contatos com e-mail em `attendees`, Meet opcional (`conferenceData.createRequest` → `hangoutLink`). `google()` cria o `GoogleCalendar` no
   primeiro uso.
 - `modelo.rs`: persona, definição das ferramentas, laço com o modelo. `ferramentas.rs`: o que cada
   ferramenta faz.

@@ -503,10 +503,14 @@ impl Atendente {
                 Ok(format!("{r} em {}", eq.clientes.cliente(&cliente)?.nome))
             }
             "ver_cliente" => {
+                let id = arg_str(args, "id")?.trim().to_string();
+                trava(&self.equipe).clientes.cliente(&id)?;
+                // a agenda é rede: fora da trava
+                let reunioes = self.reunioes_do_cliente(&id);
                 let eq = trava(&self.equipe);
-                let c = eq.clientes.cliente(&arg_str(args, "id")?)?;
+                let c = eq.clientes.cliente(&id)?;
                 let tarefas = self.bloco_tarefas(&eq, c);
-                Ok(format!("{}\n{}", crate::agenda::BLOCO, ficha(c, |s| eq.primeiro_nome(s), &[tarefas])))
+                Ok(format!("{}\n{}", crate::agenda::BLOCO, ficha(c, |s| eq.primeiro_nome(s), &[tarefas, reunioes])))
             }
             _ => Err(Erro::Valor(format!("ferramenta desconhecida: {nome}"))),
         }

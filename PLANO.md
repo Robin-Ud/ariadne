@@ -203,6 +203,8 @@ livre/ocupado. Depois, remarcar (hoje é desmarcar e marcar de novo).
 
 ## Fase 3: Clientes (10/11/2026)
 
+**Pronta no código**, testada contra o Telegram, o modelo e o Google falsos.
+
 A equipe atende fazendas: o cliente é gente com uma ou mais fazendas. Mudou a ideia de "cliente só
 na viagem": agora é um cadastro que tarefa, reunião e viagem citam pelo id.
 
@@ -218,10 +220,11 @@ na viagem": agora é um cadastro que tarefa, reunião e viagem citam pelo id.
 
 - Tarefa: `cliente` e `projeto` no `resto`, conferidos no `delegar` (projeto sem cliente vale se
   só um cliente tem esse projeto). Filtro `cliente:<id>`; a ficha lista as abertas.
-
-Falta:
-- Reunião com cliente: os contatos com e-mail em `attendees`, `ariadne_cliente` no evento, Meet
-  opcional (`conferenceData.createRequest`; o argos já manda `conferenceDataVersion=1`).
+- Reunião com cliente: os contatos com e-mail (ou os `contatos` pedidos) em `attendees`,
+  `ariadne_cliente` no evento, freeBusy só da equipe. Meet opcional (`conferenceData.createRequest`;
+  o argos manda `conferenceDataVersion=1`), o link vem no `hangoutLink`. Contato sem e-mail: ela
+  devolve o link pra repassar (o Meet, ou o `link_salvar`). A ficha mostra as reuniões dos
+  próximos 30 dias.
 
 ## Em aberto
 
