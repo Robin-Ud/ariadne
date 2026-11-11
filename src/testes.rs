@@ -795,7 +795,7 @@ fn marcar_reuniao_convida_quem_tem_email_e_avisa_aqui() {
     assert_eq!(p, "POST /freeBusy");
     assert_eq!(fb["items"], json!([{"id": "fulana@exemplo.com"}]));
     let (p, ev) = grx.recv().unwrap();
-    assert_eq!(p, "POST /calendars/primary/events?sendUpdates=all");
+    assert_eq!(p, "POST /calendars/primary/events?sendUpdates=all&conferenceDataVersion=1");
     assert_eq!(ev["attendees"], json!([{"email": "fulana@exemplo.com"}]));
     assert_eq!(ev["start"], json!({"dateTime": "2030-01-15T15:00:00-03:00", "timeZone": "America/Sao_Paulo"}));
     assert_eq!(ev["end"]["dateTime"], "2030-01-15T16:00:00-03:00");
@@ -813,7 +813,7 @@ fn marcar_reuniao_convida_quem_tem_email_e_avisa_aqui() {
     let mut forcado = pedido.clone();
     forcado["forcar"] = json!(true);
     assert!(a.ferramenta("marcar_reuniao", &forcado).unwrap().contains("(id ev2, não mostre)"));
-    assert_eq!(grx.recv().unwrap().0, "POST /calendars/primary/events?sendUpdates=all");
+    assert_eq!(grx.recv().unwrap().0, "POST /calendars/primary/events?sendUpdates=all&conferenceDataVersion=1");
 
     let e = a.ferramenta("marcar_reuniao", &json!({"titulo": "x", "inicio": "2030-01-15", "quem": []})).unwrap_err().to_string();
     assert!(e.contains("precisa da hora"), "{e}");
