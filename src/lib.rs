@@ -3,6 +3,7 @@
 pub mod agenda;
 pub mod atendente;
 pub mod botoes;
+pub mod clientes;
 pub mod config;
 pub mod estado;
 pub mod falso;

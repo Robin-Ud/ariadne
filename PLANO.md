@@ -122,8 +122,8 @@ biblioteca: `util::zip_gravar`, `Telegram::send_document`, multipart.
 
 Mudanças na ideia:
 
-- **Cliente fica só na viagem** (viagem → clientes visitados; gasto → cliente opcional). Tarefa e
-  recado não têm cliente.
+- **Cliente vem do cadastro** (fase 3): viagem → clientes visitados, gasto → cliente opcional, pelo
+  id de `dados/clientes.json`.
 - **Reembolso deixa de ser o centro.** A viagem é: destino, datas, **quem vai** (membros),
   documentos (passagem, reserva) e gastos com **quem pagou**. O relatório tem visões: por pessoa
   (quem pagou o quê, o acerto entre membros), por cliente (o antigo reembolso, `faturado` fora) e por
@@ -149,10 +149,12 @@ dá pra usar sozinha.
 1. **Recados e tarefas:** `delegar`, `recado`, `ver_tarefas`, ✅/🕒/❌, aviso de volta, cobrança
    espaçada, escalar pra quem pediu, responder recado.
 2. **Agenda:** convite, livres juntos, ver e desmarcar (feita no código, ver abaixo).
-3. **Viagem:** o port a partir do `d499ebf` do argos, já com as mudanças acima.
-4. **Equipe:** encaminhamentos de reunião (texto → tarefas pra cada um, com ✅ antes de gravar),
+3. **Clientes:** cadastro, detalhes, projetos, tarefa ligada a cliente ou projeto, reunião com
+   cliente (ver abaixo).
+4. **Viagem:** o port a partir do `d499ebf` do argos, já com as mudanças acima.
+5. **Equipe:** encaminhamentos de reunião (texto → tarefas pra cada um, com ✅ antes de gravar),
    🙋 eu pego, fechamento da semana.
-5. Ponte com o Argos pessoal.
+6. Ponte com o Argos pessoal.
 
 ## v1 (09/11/2026)
 
@@ -198,6 +200,25 @@ Decisões:
 
 Falta: o login da conta dela (`--google-login`), o e-mail de cada membro e o compartilhamento do
 livre/ocupado. Depois, remarcar (hoje é desmarcar e marcar de novo).
+
+## Fase 3: Clientes (10/11/2026)
+
+A equipe atende fazendas: o cliente é gente com uma ou mais fazendas. Mudou a ideia de "cliente só
+na viagem": agora é um cadastro que tarefa, reunião e viagem citam pelo id.
+
+- `dados/clientes.json`, fora do `estado.json` (dá pra fazer backup e editar à mão). O id é o slug
+  do nome.
+- Cliente: nome, fazendas (nome, município), `desde` (AAAA, AAAA-MM ou AAAA-MM-DD), flexibilidade
+  (`baixa | media | alta`), estilo (texto), contatos (nome, e-mail, telefone) e detalhes (`{texto,
+  por, em}`, só cresce).
+- Qualquer membro cadastra, muda e anota; só o chefe arquiva.
+- Os clientes ativos vão no system, como os membros (o system muda quando muda o cadastro).
+
+Falta:
+- Projetos do cliente (podem citar uma fazenda).
+- Tarefa ligada a cliente ou projeto (`cliente`/`projeto` no `resto`, filtro `cliente:<id>`).
+- Reunião com cliente: os contatos com e-mail em `attendees`, `ariadne_cliente` no evento, Meet
+  opcional (`conferenceData.createRequest`; o argos já manda `conferenceDataVersion=1`).
 
 ## Em aberto
 

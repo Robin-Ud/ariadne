@@ -5,6 +5,7 @@
 //! e só mudam quando entra gente. O que muda a cada mensagem (hora, tarefas) vai no turno.
 
 use crate::atendente::{trava, Atendente};
+use crate::clientes::{self, Clientes};
 use crate::config::Config;
 use crate::estado::{self, Filtro};
 use crate::membros::Membro;
@@ -22,9 +23,11 @@ const VOLTAS: usize = 10;
 const MAX_HISTORICO: usize = 40;
 
 /// a persona e a equipe. Não muda de mensagem pra mensagem (fica em cache)
-pub fn system(config: &Config, membros: &[Membro]) -> String {
+pub fn system(config: &Config, membros: &[Membro], cs: &Clientes) -> String {
     let nome = config.nome();
     let equipe: Vec<String> = membros.iter().map(|m| format!("- {} (`{}`){}", m.nome, m.slug, if m.chefe { ", o chefe" } else { "" })).collect();
+    let lista: Vec<String> = cs.ativos().map(clientes::linha).collect();
+    let lista = if lista.is_empty() { "(nenhum cadastrado ainda)".to_string() } else { lista.join("\n") };
     format!(
         "Você é {nome}, a secretária de uma equipe pequena, no Telegram. Cada membro fala com você no privado, \
 e você leva tarefas e recados de um pro outro.\n\n\
@@ -53,7 +56,13 @@ Agenda (reuniões ficam na agenda Google da {nome}, com convite):\n\
 - marcar_reuniao confere se alguém está ocupado; se voltar NÃO marquei, conte quem e pergunte. forcar = true só se a pessoa disser que quer assim mesmo.\n\
 - \"O que tenho essa semana?\", \"o Fulano tá livre quinta?\" → ver_agenda: por dia, as reuniões que você marcou e os horários livres.\n\
 - Desmarcar: só quem marcou ou o chefe, com o id que vem no ver_agenda. O id é só pra você: nunca mostre.\n\
-- Quando a ferramenta disser \"Mande só este bloco, como está:\", a resposta é só esse bloco, sem mudar nem acrescentar nada (o que vem antes é só pra você). Duas ações, dois blocos, um embaixo do outro.\n",
+- Quando a ferramenta disser \"Mande só este bloco, como está:\", a resposta é só esse bloco, sem mudar nem acrescentar nada (o que vem antes é só pra você). Duas ações, dois blocos, um embaixo do outro.\n\n\
+Clientes (nome e o id que vai nas ferramentas):\n{lista}\n\n\
+- \"Cadastra o cliente…\", \"o Fulano agora tem a fazenda…\", \"o Fulano é bem flexível\" → salvar_cliente só com o que foi dito; o resto fica como está. Cliente novo vai sem id; pra mudar um que existe, mande o id.\n\
+- Desde quando é cliente: AAAA, AAAA-MM ou AAAA-MM-DD. Flexibilidade: baixa, media ou alta. Estilo: como ele é de lidar, em poucas palavras.\n\
+- \"Anota no Fulano que…\" → anotar_cliente, o detalhe como um fato curto.\n\
+- \"Como é o Fulano?\", \"o que tem do Fulano?\" → ver_cliente.\n\
+- Ache o cliente pelo nome ou pela fazenda na lista acima. Não invente cliente: se não estiver na lista, pergunte se é novo.\n",
         equipe.join("\n")
     )
 }
@@ -72,8 +81,20 @@ fn enum_todos(membros: &[Membro]) -> Value {
     Value::Array(v)
 }
 
-pub fn ferramentas(membros: &[Membro]) -> Value {
+/// id de cliente: enum com os ativos (sem nenhum, string solta: o erro volta da ferramenta)
+fn cliente_id(cs: &Clientes, descricao: &str) -> Value {
+    let ids: Vec<Value> = cs.ativos().map(|c| json!(c.id)).collect();
+    if ids.is_empty() {
+        json!({"type": "string", "description": descricao})
+    } else {
+        json!({"type": "string", "enum": ids, "description": descricao})
+    }
+}
+
+pub fn ferramentas(membros: &[Membro], cs: &Clientes) -> Value {
     let id = json!({"type": "integer", "description": "o #id da tarefa"});
+    let cliente = cliente_id(cs, "id do cliente");
+    let texto_ou_null = json!({"type": ["string", "null"]});
     let quem = json!({"type": "array", "items": {"type": "string", "enum": enum_todos(membros)}, "description": "ids de quem vai além de quem fala; [\"todos\"] = a equipe toda"});
     let filtro = "minhas (o que quem fala tem que fazer), pedi (o que pediu pros outros), equipe (tudo da equipe, menos lembrete pessoal dos outros) ou de:<id> (o que aquele membro tem que fazer)";
     json!([
@@ -126,6 +147,24 @@ pub fn ferramentas(membros: &[Membro]) -> Value {
              "fim": {"type": ["string", "null"], "description": "AAAA-MM-DD (inclusive); null = 7 dias depois do inicio"}}}},
         {"name": "desmarcar_reuniao", "description": "Desmarca uma reunião (só quem marcou ou o chefe); o Google avisa os convidados e você avisa aqui.",
          "input_schema": {"type": "object", "properties": {"id": {"type": "string", "description": "o id que vem no ver_agenda"}}, "required": ["id"]}},
+        {"name": "salvar_cliente", "description": "Cadastra cliente novo (sem id) ou muda um que existe (com id). Só mexe no que vier; o resto fica. Devolve a ficha.",
+         "input_schema": {"type": "object", "properties": {
+             "id": {"type": ["string", "null"], "description": "id do cliente que existe; null = cliente novo"},
+             "nome": texto_ou_null.clone(),
+             "desde": {"type": ["string", "null"], "description": "início da parceria: AAAA, AAAA-MM ou AAAA-MM-DD"},
+             "flexibilidade": {"type": ["string", "null"], "enum": ["baixa", "media", "alta", null]},
+             "estilo": {"type": ["string", "null"], "description": "como ele é de lidar, curto (substitui o anterior)"},
+             "fazendas_add": {"type": "array", "items": {"type": "object", "properties": {"nome": {"type": "string"}, "municipio": texto_ou_null.clone()}, "required": ["nome"]},
+                              "description": "fazendas novas, ou o município de uma que já existe"},
+             "fazendas_remover": {"type": "array", "items": {"type": "string"}, "description": "nomes das fazendas que saem"},
+             "contatos_add": {"type": "array", "items": {"type": "object", "properties": {"nome": {"type": "string"}, "email": texto_ou_null.clone(), "telefone": texto_ou_null.clone()}, "required": ["nome"]},
+                              "description": "gente do cliente (o e-mail recebe o convite das reuniões); mesmo nome = atualiza"},
+             "contatos_remover": {"type": "array", "items": {"type": "string"}},
+             "arquivar": {"type": ["boolean", "null"], "description": "true = arquiva, false = volta (só o chefe)"}}}},
+        {"name": "anotar_cliente", "description": "Anota um detalhe sobre o cliente (fica com quem anotou e quando).",
+         "input_schema": {"type": "object", "properties": {"id": cliente.clone(), "texto": {"type": "string"}}, "required": ["id", "texto"]}},
+        {"name": "ver_cliente", "description": "A ficha do cliente, já no formato de mandar: fazendas, desde quando, flexibilidade, estilo, contatos e os detalhes mais novos.",
+         "input_schema": {"type": "object", "properties": {"id": cliente}, "required": ["id"]}},
     ])
 }
 
@@ -205,7 +244,7 @@ impl Atendente {
     fn laco_modelo(&mut self) -> R<String> {
         let (system, tools) = {
             let eq = trava(&self.equipe);
-            (system(&self.config, &eq.membros), ferramentas(&eq.membros))
+            (system(&self.config, &eq.membros, &eq.clientes), ferramentas(&eq.membros, &eq.clientes))
         };
         let (base, beta) = model_params(&self.config.modelo, &self.config.esforco);
         for _ in 0..VOLTAS {

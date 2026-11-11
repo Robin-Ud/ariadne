@@ -21,6 +21,8 @@ Mapa:
 - `atendente.rs`: thread por membro (`handle`/`tick`, menu por chat). `botoes.rs`: ✅ / 🕒 / ❌ da
   tarefa e a pergunta que vem depois.
 - `resumo.rs`: resumo quinzenal do chefe (sem modelo).
+- `clientes.rs`: `dados/clientes.json` (fazendas, desde, flexibilidade, estilo, contatos, detalhes),
+  `salvar_cliente`/`anotar_cliente`/`ver_cliente`; os ativos vão no system.
 - `recados.rs`: recado na hora ou agendado (sai no `tick` de quem recebe).
 - `agenda.rs`: reunião na agenda Google dela (convite, `extendedProperties.private` com quem marcou e
   quem vai), livres juntos pelo freeBusy, ver e desmarcar. `google()` cria o `GoogleCalendar` no
@@ -48,6 +50,7 @@ Padrão do `~/.claude/CLAUDE.md`. Escopos:
 | `tarefas` | delegar, cobrança, aviso de volta, escalar |
 | `recados` | recado, resposta |
 | `agenda` | link, `.ics`, convite, livres juntos |
+| `clientes` | cadastro, fazendas, detalhes, projetos |
 | `viagens` | viagem, gastos, relatório |
 | `persona` | prompt e ferramentas do modelo |
 | `config` | `configs.json`, `--membro`, `--checar-config` |

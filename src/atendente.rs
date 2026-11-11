@@ -2,6 +2,7 @@
 //! Chegou update → `handle`; deu o tempo → `tick`. Um membro esperando o modelo não trava os outros.
 
 use crate::botoes::Espera;
+use crate::clientes::{self, Clientes};
 use crate::config::Config;
 use crate::estado::{self, Estado};
 use crate::membros::{self, Membro};
@@ -20,6 +21,8 @@ use std::time::{Duration, Instant};
 pub struct Time {
     pub membros: Vec<Membro>,
     pub estado: Estado,
+    /// o cadastro de clientes (`dados/clientes.json`, ver `clientes.rs`)
+    pub clientes: Clientes,
     /// a pasta da Ariadne (o estado vai em `dados/estado.json`)
     pub dir: PathBuf,
 }
@@ -27,11 +30,15 @@ pub struct Time {
 impl Time {
     /// lê o estado; os membros entram pelo `Roteador::recarrega`
     pub fn carregar(dir: &Path) -> R<Time> {
-        Ok(Time { membros: vec![], estado: estado::carregar(&estado::arquivo(dir))?, dir: dir.to_path_buf() })
+        Ok(Time { membros: vec![], estado: estado::carregar(&estado::arquivo(dir))?, clientes: clientes::carregar(&clientes::arquivo(dir))?, dir: dir.to_path_buf() })
     }
 
     pub fn gravar(&self) -> R<()> {
         estado::gravar(&self.estado, &estado::arquivo(&self.dir))
+    }
+
+    pub fn gravar_clientes(&self) -> R<()> {
+        clientes::gravar(&self.clientes, &clientes::arquivo(&self.dir))
     }
 
     pub fn membro(&self, slug: &str) -> Option<&Membro> {
@@ -143,7 +150,7 @@ impl Atendente {
 
     fn saudacao(&self) -> String {
         format!(
-            "Oi, {}! Aqui é {}, a secretária da equipe.\n\nMe fala do jeito que falaria com uma pessoa:\n• \"pede pro Fulano mandar a proposta até sexta\"\n• \"me lembra de ligar pro contador amanhã\"\n• \"o que tenho pra fazer?\", \"o que eu pedi?\"\n• \"marca reunião com o Fulano quinta 15h\", \"quando a gente tá livre essa semana?\"\n\nQuem recebe uma tarefa é cobrado até concluir, adiar ou recusar, e quem pediu fica sabendo.",
+            "Oi, {}! Aqui é {}, a secretária da equipe.\n\nMe fala do jeito que falaria com uma pessoa:\n• \"pede pro Fulano mandar a proposta até sexta\"\n• \"me lembra de ligar pro contador amanhã\"\n• \"o que tenho pra fazer?\", \"o que eu pedi?\"\n• \"marca reunião com o Fulano quinta 15h\", \"quando a gente tá livre essa semana?\"\n• \"cadastra o cliente Fulano, da fazenda Boa Vista\", \"anota no Fulano que ele prefere WhatsApp\"\n\nQuem recebe uma tarefa é cobrado até concluir, adiar ou recusar, e quem pediu fica sabendo.",
             esc(&self.nome()),
             esc(&self.config.assistente)
         )

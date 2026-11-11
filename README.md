@@ -9,9 +9,9 @@ tocam num link. Ninguém mais precisa criar bot nem fazer login no Google.
 Usa o [Argos](https://github.com/Robin-Ud/argos) como biblioteca. O plano completo está no
 [`PLANO.md`](PLANO.md).
 
-> **Estado:** fase 1 (tarefas entre membros, lembretes pessoais, cobrança e recados) e fase 2
-> (agenda: reunião com convite, livres juntos) prontas no código, testadas contra Telegram, modelo e
-> Google falsos.
+> **Estado:** fase 1 (tarefas entre membros, lembretes pessoais, cobrança e recados), fase 2
+> (agenda: reunião com convite, livres juntos) e o cadastro de clientes da fase 3 prontos no código,
+> testados contra Telegram, modelo e Google falsos.
 
 ## Pôr no ar
 
@@ -142,6 +142,23 @@ As reuniões ficam na agenda Google dela, que é quem organiza.
 O que é de cada reunião (quem marcou, quem vai) fica no próprio evento, em
 `extendedProperties.private`. Nada de agenda vai pro `estado.json`.
 
+## Clientes
+
+O cadastro fica em `dados/clientes.json`. Qualquer membro cadastra, muda e anota, sempre pela
+conversa:
+
+- **Cadastrar e mudar:** "cadastra o cliente João Pereira, da fazenda Boa Vista em Rio Verde, cliente
+  desde março de 2021". Cada cliente tem fazendas (nome e município), desde quando é cliente (ano,
+  mês ou dia), flexibilidade (baixa, média ou alta), estilo (texto curto, "quer tudo por escrito") e
+  contatos (nome, e-mail, telefone). Mudar mexe só no que foi dito.
+- **Anotar:** "anota no João que ele prefere WhatsApp". O detalhe guarda quem anotou e quando, e só
+  cresce.
+- **Ver:** "como é o João?" devolve a ficha: o cadastro e os 10 detalhes mais novos.
+- **Arquivar:** só o chefe. Cliente arquivado some da lista que ela conhece, mas a ficha continua.
+
+O id do cliente é o nome sem acento nem espaço (`joao-pereira`). Ela conhece os clientes ativos pela
+lista que vai junto com a equipe no prompt, então acha o cliente pelo nome ou pela fazenda.
+
 ## Como funciona
 
 Um processo só faz o `getUpdates`, porque o Telegram não deixa dois processos lerem o mesmo bot. Ele
@@ -182,6 +199,7 @@ membros/<slug>/chat_id              0600, depois
 membros/<slug>/conversa.jsonl       conversa recente (24 h)
 dados/estado.json                   tarefas abertas, recados agendados
 dados/historico.jsonl               tarefa fechada (feita, recusada, cancelada), uma por linha
+dados/clientes.json                 cadastro de clientes: fazendas, perfil, contatos, detalhes
 ```
 
 ## Licença

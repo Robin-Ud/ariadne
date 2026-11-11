@@ -662,7 +662,7 @@ fn chefe_fica_no_membro_json_e_no_prompt() {
     membros::cadastrar(&tmp.0, "Chefia", None, 0).unwrap();
     let v = membros::listar(&tmp.0).unwrap();
     assert!(v[0].chefe && !v[1].chefe, "recadastrar (link novo) não tira o chefe");
-    let system = crate::modelo::system(&config::Config::default(), &v);
+    let system = crate::modelo::system(&config::Config::default(), &v, &Default::default());
     assert!(system.contains("- Chefia (`chefia`), o chefe\n- Fulana (`fulana`)\n"), "{system}");
 }
 
@@ -887,4 +887,90 @@ fn desmarcar_so_quem_marcou_e_avisa_os_outros() {
     assert_eq!(grx.recv().unwrap().0, "GET /calendars/primary/events/ev1");
     assert_eq!(grx.recv().unwrap().0, "DELETE /calendars/primary/events/ev1?sendUpdates=all");
     espera(&rx, enviado_a(100, "🚫 <b>Beltrano</b> desmarcou\n<b>ter 15/01 · 10h–11h</b>\nPlanejamento"));
+}
+
+// --- clientes ---
+
+use crate::atendente::trava;
+use crate::clientes;
+
+#[test]
+fn clientes_vao_e_voltam_e_json_quebrado_nao_sobe() {
+    let tmp = TempDir::new("ariadne_clientes.");
+    let arq = clientes::arquivo(&tmp.0);
+    assert!(clientes::carregar(&arq).unwrap().clientes.is_empty(), "sem arquivo: nenhum");
+    std::fs::create_dir_all(arq.parent().unwrap()).unwrap();
+    std::fs::write(&arq, r#"{"clientes": [{"id": "joao-pereira", "nome": "João Pereira", "flexibilidade": "media", "cor": "verde"}], "versao": 2}"#).unwrap();
+    let c = clientes::carregar(&arq).unwrap();
+    assert_eq!(c.clientes[0].flexibilidade, Some(clientes::Flex::Media));
+    clientes::gravar(&c, &arq).unwrap();
+    let json = std::fs::read_to_string(&arq).unwrap();
+    assert!(json.contains(r#""cor": "verde""#) && json.contains(r#""versao": 2"#), "chave desconhecida fica: {json}");
+    std::fs::write(&arq, "{quebrado").unwrap();
+    assert!(clientes::carregar(&arq).is_err());
+}
+
+#[test]
+fn salvar_cliente_muda_so_o_que_veio_e_so_o_chefe_arquiva() {
+    let (tmp, r, _rx, _crx) = time_de_teste(vec![]);
+    let mut a = atendente_de(&r, "fulana-souza", 100);
+    let novo = json!({"nome": "João Pereira", "desde": "2021-03", "flexibilidade": "alta", "estilo": "quer tudo por escrito",
+                      "fazendas_add": [{"nome": "Boa Vista", "municipio": "Rio Verde"}, {"nome": "Santa Rita"}],
+                      "contatos_add": [{"nome": "João", "email": "cliente@exemplo.com"}]});
+    let res = a.ferramenta("salvar_cliente", &novo).unwrap();
+    assert!(res.starts_with("João Pereira cadastrado (id joao-pereira). Mande só este bloco, como está:\n🌾 <b>João Pereira</b>\n"), "{res}");
+    assert!(res.contains("Fazendas: Boa Vista (Rio Verde), Santa Rita\nCliente desde 03/2021 · flexibilidade alta\nEstilo: quer tudo por escrito\nContatos: João (cliente@exemplo.com)"), "{res}");
+    assert!(a.ferramenta("salvar_cliente", &json!({"nome": "joão pereira"})).unwrap_err().to_string().contains("já tem cliente"));
+
+    // muda só o que veio; contato de mesmo nome atualiza
+    a.ferramenta("salvar_cliente", &json!({"id": "joao-pereira", "flexibilidade": "baixa", "fazendas_remover": ["santa rita"],
+                                            "contatos_add": [{"nome": "joão", "telefone": "64 99999-0000"}]})).unwrap();
+    let c = clientes::carregar(&clientes::arquivo(&tmp.0)).unwrap().clientes.remove(0);
+    assert_eq!((c.flexibilidade, c.estilo.as_deref(), c.desde.as_deref()), (Some(clientes::Flex::Baixa), Some("quer tudo por escrito"), Some("2021-03")));
+    assert_eq!(c.fazendas.iter().map(|f| f.nome.as_str()).collect::<Vec<_>>(), ["Boa Vista"]);
+    assert_eq!((c.contatos.len(), c.contatos[0].email.as_deref(), c.contatos[0].telefone.as_deref()), (1, Some("cliente@exemplo.com"), Some("64 99999-0000")));
+
+    // erro no meio não grava nada
+    assert!(a.ferramenta("salvar_cliente", &json!({"id": "joao-pereira", "estilo": "outro", "desde": "março"})).is_err());
+    assert!(a.ferramenta("salvar_cliente", &json!({"id": "joao-pereira", "estilo": "outro", "fazendas_remover": ["nenhuma"]})).is_err());
+    assert_eq!(trava(&r.equipe).clientes.clientes[0].estilo.as_deref(), Some("quer tudo por escrito"));
+    assert!(a.ferramenta("salvar_cliente", &json!({"id": "ninguem", "estilo": "x"})).is_err());
+
+    assert!(a.ferramenta("salvar_cliente", &json!({"id": "joao-pereira", "arquivar": true})).unwrap_err().to_string().contains("só o chefe"));
+    membros::marcar_chefe(&tmp.0, "fulana-souza", true).unwrap();
+    let mut r = r;
+    r.recarrega().unwrap();
+    assert!(a.ferramenta("salvar_cliente", &json!({"id": "joao-pereira", "arquivar": true})).unwrap().starts_with("João Pereira arquivado"));
+    let eq = trava(&r.equipe);
+    assert!(crate::modelo::system(&r.config, &eq.membros, &eq.clientes).contains("Clientes (nome e o id que vai nas ferramentas):\n(nenhum cadastrado ainda)"), "arquivado sai do system");
+}
+
+#[test]
+fn anotar_e_ver_cliente_e_o_system_lista_os_ativos() {
+    let (_tmp, mut r, rx, crx) = time_de_teste(vec![
+        usa("t1", "anotar_cliente", json!({"id": "joao-pereira", "texto": "prefere WhatsApp a e-mail"})),
+        diz("Anotado."),
+        usa("t2", "ver_cliente", json!({"id": "joao-pereira"})),
+        diz("ficha"),
+    ]);
+    {
+        let mut eq = trava(&r.equipe);
+        let m = clientes::Mudanca { nome: Some("João Pereira".into()), fazendas_add: vec![clientes::Fazenda { nome: "Boa Vista".into(), municipio: None, resto: Default::default() }], ..Default::default() };
+        eq.clientes.salvar(None, m).unwrap();
+    }
+    r.despacha(&msg(200, "private", "anota no João que ele prefere WhatsApp")).unwrap();
+    espera(&rx, enviado_a(200, "Anotado."));
+    let p1 = crx.recv().unwrap();
+    let system = p1["system"][0]["text"].as_str().unwrap();
+    assert!(system.contains("Clientes (nome e o id que vai nas ferramentas):\n- João Pereira (`joao-pereira`): fazendas Boa Vista\n"), "{system}");
+    let anotar = p1["tools"].as_array().unwrap().iter().find(|t| t["name"] == "anotar_cliente").unwrap();
+    assert_eq!(anotar["input_schema"]["properties"]["id"]["enum"], json!(["joao-pereira"]));
+    assert_eq!(resultado(&crx.recv().unwrap()), "anotado em João Pereira");
+
+    r.despacha(&msg(100, "private", "como é o João?")).unwrap();
+    espera(&rx, enviado_a(100, "ficha"));
+    crx.recv().unwrap();
+    let ficha = resultado(&crx.recv().unwrap());
+    let hoje = argos::util::agora().format("%d/%m/%y");
+    assert!(ficha.ends_with(&format!("<b>Detalhes</b>\n{hoje} Beltrano: prefere WhatsApp a e-mail")), "{ficha}");
 }

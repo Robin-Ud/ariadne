@@ -22,7 +22,7 @@ const MAX_DIAS_LIVRES: usize = 5;
 /// buraco menor que isto não aparece como livre no ver agenda
 const MIN_LIVRE: i64 = 30;
 /// a resposta é um bloco pronto: a persona manda como está (o que vem antes é só pra ela)
-const BLOCO: &str = "Mande só este bloco, como está:";
+pub(crate) const BLOCO: &str = "Mande só este bloco, como está:";
 
 /// quem vai (ids), gravado no evento
 fn quem_do_evento(e: &Value) -> Vec<String> {
@@ -79,7 +79,7 @@ fn titulo_do(e: &Value) -> &str {
     e.get("summary").and_then(Value::as_str).unwrap_or("(sem título)")
 }
 
-fn maiuscula(s: &str) -> String {
+pub(crate) fn maiuscula(s: &str) -> String {
     let mut c = s.chars();
     c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
 }
