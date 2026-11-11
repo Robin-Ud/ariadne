@@ -7,7 +7,7 @@
 use crate::atendente::{trava, Atendente};
 use crate::botoes::teclado;
 use crate::estado::{self, Fecho, Filtro};
-use crate::modelo::linha_tarefa;
+use crate::modelo::{linha_tarefa, nome_cliente};
 use argos::rascunho::esc;
 use argos::tarefas::{fmt_when, task_move, Tarefa};
 use argos::util::{agora, arg, arg_str, iso, Dt, Erro, R};
@@ -28,12 +28,14 @@ impl Atendente {
             "ver_tarefas" => {
                 let f = Filtro::de_texto(&arg_str(args, "filtro")?)?;
                 let eq = trava(&self.equipe);
-                if let Filtro::De(s) = &f {
-                    if eq.membro(s).is_none() {
-                        return Err(Erro::Valor(format!("{s:?} não é da equipe")));
+                match &f {
+                    Filtro::De(s) if eq.membro(s).is_none() => return Err(Erro::Valor(format!("{s:?} não é da equipe"))),
+                    Filtro::Cliente(c) => {
+                        eq.clientes.cliente(c)?;
                     }
+                    _ => {}
                 }
-                let v: Vec<String> = estado::visiveis(&eq.estado, &self.slug, &f).iter().map(|t| linha_tarefa(t, |s| eq.primeiro_nome(s), &self.slug)).collect();
+                let v: Vec<String> = estado::visiveis(&eq.estado, &self.slug, &f).iter().map(|t| linha_tarefa(t, |s| eq.primeiro_nome(s), &self.slug, &eq.clientes)).collect();
                 Ok(if v.is_empty() { "nenhuma tarefa aberta nesse filtro".into() } else { v.join("\n") })
             }
             "delegar" => self.delegar(args),
@@ -72,21 +74,27 @@ impl Atendente {
         if prazo.is_some_and(|p| p <= now) {
             return Err(Erro::Valor("prazo no passado".into()));
         }
-        let (t, eu, nome_para) = {
+        let texto_de = |k: &str| args.get(k).and_then(Value::as_str);
+        let (t, eu, nome_para, do_cliente) = {
             let mut eq = trava(&self.equipe);
             if eq.membro(&para).is_none() {
                 return Err(Erro::Valor(format!("{para:?} não é da equipe")));
             }
+            let vinculo = eq.clientes.vinculo(texto_de("cliente"), texto_de("projeto"))?;
             let mut t = estado::nova_tarefa(&mut eq.estado, &self.slug, &para, &texto, prazo, &now, &self.config.cfg_cobranca())?;
             if para != self.slug && eq.membro(&self.slug).is_some_and(|m| m.chefe) {
                 estado::marca_do_chefe(&mut t);
-                if let Some(x) = eq.estado.tarefas.iter_mut().find(|x| x.id == t.id) {
-                    *x = t.clone();
-                }
+            }
+            if let Some((c, p)) = &vinculo {
+                estado::liga(&mut t, c, p.as_deref());
+            }
+            if let Some(x) = eq.estado.tarefas.iter_mut().find(|x| x.id == t.id) {
+                *x = t.clone();
             }
             eq.gravar()?;
             let eu = if estado::do_chefe(&t) { format!("{} (chefe)", eq.primeiro_nome(&self.slug)) } else { eq.primeiro_nome(&self.slug) };
-            (t, eu, eq.primeiro_nome(&para))
+            let do_cliente = nome_cliente(&t, &eq.clientes).map(|c| format!("\n🌾 {}", esc(&c))).unwrap_or_default();
+            (t, eu, eq.primeiro_nome(&para), do_cliente)
         };
         let quando = |t: &Tarefa| match t.cobrar_em.as_deref() {
             Some(c) => format!("primeira cobrança {}", fmt_when(c).unwrap_or_default()),
@@ -95,7 +103,7 @@ impl Atendente {
         if para == self.slug {
             return Ok(format!("lembrete #{} criado; {}", t.id, quando(&t)));
         }
-        let msg = format!("📌 <b>{}</b> te pediu: {}{}", esc(&eu), esc(&estado::titulo(&t)), esc(&nota_prazo(&t)));
+        let msg = format!("📌 <b>{}</b> te pediu: {}{}{do_cliente}", esc(&eu), esc(&estado::titulo(&t)), esc(&nota_prazo(&t)));
         Ok(match self.envia_para(&para, &msg, Some(teclado(t.id, false)))? {
             Some(_) => format!("tarefa #{} criada pra {nome_para}, que já recebeu; {}", t.id, quando(&t)),
             None => format!("tarefa #{} criada, mas {nome_para} ainda não entrou no Telegram comigo (não tocou no link do convite): não foi avisado", t.id),

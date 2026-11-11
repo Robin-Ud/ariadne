@@ -324,6 +324,33 @@ impl Clientes {
         Ok(())
     }
 
+    /// O (cliente, projeto) de uma tarefa, conferido: cliente ativo, projeto ativo dele. Projeto sem
+    /// cliente vale se só um cliente tem esse projeto.
+    pub fn vinculo(&self, cliente: Option<&str>, projeto: Option<&str>) -> R<Option<(String, Option<String>)>> {
+        let projeto = projeto.and_then(texto_ou_none).map(|p| slug_de(&p));
+        let c = match cliente.and_then(texto_ou_none) {
+            Some(id) => self.cliente(&id)?,
+            None => {
+                let Some(p) = &projeto else { return Ok(None) };
+                let v: Vec<&Cliente> = self.ativos().filter(|c| c.projetos_ativos().any(|x| &x.id == p)).collect();
+                match v.as_slice() {
+                    [c] => *c,
+                    [] => return Err(Erro::Valor(format!("nenhum cliente tem o projeto ativo {p:?}"))),
+                    _ => return Err(Erro::Valor(format!("mais de um cliente tem o projeto {p:?}: mande o cliente"))),
+                }
+            }
+        };
+        if c.arquivado {
+            return Err(Erro::Valor(format!("{} está arquivado", c.nome)));
+        }
+        if let Some(p) = &projeto {
+            if !c.projetos_ativos().any(|x| &x.id == p) {
+                return Err(Erro::Valor(format!("{} não tem projeto ativo {p:?}", c.nome)));
+            }
+        }
+        Ok(Some((c.id.clone(), projeto)))
+    }
+
     pub fn anotar(&mut self, id: &str, texto: &str, por: &str, now: &Dt) -> R<()> {
         let texto = texto_ou_none(texto).ok_or_else(|| Erro::Valor("detalhe vazio".into()))?;
         let c = self.cliente_mut(id)?;
@@ -478,10 +505,34 @@ impl Atendente {
             "ver_cliente" => {
                 let eq = trava(&self.equipe);
                 let c = eq.clientes.cliente(&arg_str(args, "id")?)?;
-                Ok(format!("{}\n{}", crate::agenda::BLOCO, ficha(c, |s| eq.primeiro_nome(s), &[])))
+                let tarefas = self.bloco_tarefas(&eq, c);
+                Ok(format!("{}\n{}", crate::agenda::BLOCO, ficha(c, |s| eq.primeiro_nome(s), &[tarefas])))
             }
             _ => Err(Erro::Valor(format!("ferramenta desconhecida: {nome}"))),
         }
+    }
+
+    /// "<b>Tarefas abertas</b>\n• #3 mandar o orçamento · faz Beltrano · Pivô · até sex 13/11 09:00"
+    /// (as que quem fala pode ver); vazio se não tem
+    fn bloco_tarefas(&self, eq: &crate::atendente::Time, c: &Cliente) -> String {
+        use crate::estado::{self, Filtro};
+        let ts = estado::visiveis(&eq.estado, &self.slug, &Filtro::Cliente(c.id.clone()));
+        if ts.is_empty() {
+            return String::new();
+        }
+        let mut l = vec!["<b>Tarefas abertas</b>".to_string()];
+        for t in ts {
+            let mut notas = vec![if estado::pessoal(t) { "lembrete seu".to_string() } else { format!("faz {}", eq.primeiro_nome(estado::para(t))) }];
+            if let Some(p) = estado::projeto(t) {
+                notas.push(c.projetos.iter().find(|x| x.id == p).map(|x| x.nome.clone()).unwrap_or_else(|| p.to_string()));
+            }
+            let prazo = crate::ferramentas::nota_prazo(t);
+            if let Some(p) = prazo.trim().strip_prefix('(').and_then(|p| p.strip_suffix(')')) {
+                notas.push(p.to_string());
+            }
+            l.push(format!("• #{} {} · {}", t.id, esc(&estado::titulo(t)), esc(&notas.join(" · "))));
+        }
+        l.join("\n")
     }
 
     fn salvar_cliente(&mut self, args: &Value) -> R<String> {

@@ -155,8 +155,11 @@ conversa:
   cresce.
 - **Projetos:** "começamos o pivô central na Boa Vista do João". O projeto é do cliente e pode
   citar uma fazenda dele. "O pivô acabou" encerra; criar de novo com o mesmo nome reabre.
-- **Ver:** "como é o João?" devolve a ficha: o cadastro, os projetos ativos e os 10 detalhes mais
-  novos.
+- **Tarefa do cliente:** "pede pro Beltrano mandar o orçamento do pivô do João". A tarefa leva o
+  cliente (e o projeto, se foi dito), chega com "🌾 João Pereira / Pivô central" embaixo e vai assim
+  pro histórico. "O que tem aberto do João?" lista as tarefas dele.
+- **Ver:** "como é o João?" devolve a ficha: o cadastro, os projetos ativos, as tarefas abertas e os
+  10 detalhes mais novos.
 - **Arquivar:** só o chefe. Cliente arquivado some da lista que ela conhece, mas a ficha continua.
 
 O id do cliente é o nome sem acento nem espaço (`joao-pereira`). Ela conhece os clientes ativos pela
@@ -200,7 +203,7 @@ membros/<slug>/membro.json          {nome, email, chefe}
 membros/<slug>/convite              0600, até a pessoa tocar no link
 membros/<slug>/chat_id              0600, depois
 membros/<slug>/conversa.jsonl       conversa recente (24 h)
-dados/estado.json                   tarefas abertas, recados agendados
+dados/estado.json                   tarefas abertas (com o cliente, se tiver), recados agendados
 dados/historico.jsonl               tarefa fechada (feita, recusada, cancelada), uma por linha
 dados/clientes.json                 cadastro de clientes: fazendas, perfil, contatos, detalhes, projetos
 ```

@@ -15,7 +15,7 @@ cargo run -- --google-login    # login da conta Google dela (navegador)
 Mapa:
 - `config.rs`: configs.json.
 - `estado.rs`: `dados/estado.json` (tarefas, recados agendados, mapa do reply). Tarefa fechada vai
-  pro `historico.jsonl`.
+  pro `historico.jsonl`. `cliente`/`projeto` da tarefa no `resto` (`liga`, filtro `cliente:<id>`).
 - `membros.rs`: membro.json, convite, pareamento.
 - `roteador.rs`: o único `getUpdates`, `despacha` por chat.
 - `atendente.rs`: thread por membro (`handle`/`tick`, menu por chat). `botoes.rs`: ✅ / 🕒 / ❌ da

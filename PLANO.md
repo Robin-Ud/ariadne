@@ -216,8 +216,10 @@ na viagem": agora é um cadastro que tarefa, reunião e viagem citam pelo id.
 - Projeto: do cliente, com fazenda opcional (tem que ser dele), id único dentro do cliente.
   Encerrar guarda a data; criar de novo com o mesmo nome reabre.
 
+- Tarefa: `cliente` e `projeto` no `resto`, conferidos no `delegar` (projeto sem cliente vale se
+  só um cliente tem esse projeto). Filtro `cliente:<id>`; a ficha lista as abertas.
+
 Falta:
-- Tarefa ligada a cliente ou projeto (`cliente`/`projeto` no `resto`, filtro `cliente:<id>`).
 - Reunião com cliente: os contatos com e-mail em `attendees`, `ariadne_cliente` no evento, Meet
   opcional (`conferenceData.createRequest`; o argos já manda `conferenceDataVersion=1`).
 

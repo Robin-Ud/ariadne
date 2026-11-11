@@ -46,7 +46,8 @@ Tarefas:\n\
 - Sem prazo, a tarefa já começa a ser cobrada (espaçado, só em horário de trabalho). Com prazo, o aviso sai no prazo.\n\
 - Prazo e quando: AAAA-MM-DD (vale às 09:00) ou AAAA-MM-DDTHH:MM, calculado pelo [agora] e pelos próximos dias da mensagem.\n\
 - Quem faz conclui, adia ou recusa (recusar pede o motivo: pergunte se não veio). Quem pediu cancela. Use o #id que vem nas tarefas.\n\
-- Cada ação já avisa o outro lado sozinha: não diga que vai avisar, diga que avisou (o resultado da ferramenta conta).\n\n\
+- Cada ação já avisa o outro lado sozinha: não diga que vai avisar, diga que avisou (o resultado da ferramenta conta).\n\
+- Tarefa de um cliente (\"pede pro Fulano mandar o orçamento do João\") → delegar com cliente, e projeto se foi dito. As tarefas de um cliente: ver_tarefas com cliente:<id>.\n\n\
 Recados:\n\
 - \"Avisa o Fulano que…\", \"fala pra todo mundo que…\" → recado (não é tarefa: ninguém é cobrado). Com hora (\"amanhã às 8 avisa…\") → quando.\n\
 - O texto do recado vai como quem mandou falaria pro outro, em primeira pessoa (\"chego 10h amanhã\"), sem \"a Fulana disse que\": a mensagem já sai com o nome dela.\n\
@@ -82,22 +83,26 @@ fn enum_todos(membros: &[Membro]) -> Value {
     Value::Array(v)
 }
 
-/// id de cliente: enum com os ativos (sem nenhum, string solta: o erro volta da ferramenta)
-fn cliente_id(cs: &Clientes, descricao: &str) -> Value {
-    let ids: Vec<Value> = cs.ativos().map(|c| json!(c.id)).collect();
+/// id de cliente: enum com os ativos (sem nenhum, string solta: o erro volta da ferramenta).
+/// `nulo` = opcional (null no enum)
+fn cliente_id(cs: &Clientes, descricao: &str, nulo: bool) -> Value {
+    let mut ids: Vec<Value> = cs.ativos().map(|c| json!(c.id)).collect();
+    let tipo = if nulo { json!(["string", "null"]) } else { json!("string") };
     if ids.is_empty() {
-        json!({"type": "string", "description": descricao})
-    } else {
-        json!({"type": "string", "enum": ids, "description": descricao})
+        return json!({"type": tipo, "description": descricao});
     }
+    if nulo {
+        ids.push(Value::Null);
+    }
+    json!({"type": tipo, "enum": ids, "description": descricao})
 }
 
 pub fn ferramentas(membros: &[Membro], cs: &Clientes) -> Value {
     let id = json!({"type": "integer", "description": "o #id da tarefa"});
-    let cliente = cliente_id(cs, "id do cliente");
+    let cliente = cliente_id(cs, "id do cliente", false);
     let texto_ou_null = json!({"type": ["string", "null"]});
     let quem = json!({"type": "array", "items": {"type": "string", "enum": enum_todos(membros)}, "description": "ids de quem vai além de quem fala; [\"todos\"] = a equipe toda"});
-    let filtro = "minhas (o que quem fala tem que fazer), pedi (o que pediu pros outros), equipe (tudo da equipe, menos lembrete pessoal dos outros) ou de:<id> (o que aquele membro tem que fazer)";
+    let filtro = "minhas (o que quem fala tem que fazer), pedi (o que pediu pros outros), equipe (tudo da equipe, menos lembrete pessoal dos outros), de:<id> (o que aquele membro tem que fazer) ou cliente:<id> (as ligadas àquele cliente)";
     json!([
         {"name": "ver_tarefas", "description": "Lista as tarefas abertas, com id, quem pediu, quem faz, prazo e cobranças sem resposta.",
          "input_schema": {"type": "object", "properties": {
@@ -107,7 +112,9 @@ pub fn ferramentas(membros: &[Membro], cs: &Clientes) -> Value {
          "input_schema": {"type": "object", "properties": {
              "para": {"type": "string", "enum": enum_para(membros), "description": "id de quem faz; eu = quem está falando"},
              "texto": {"type": "string", "description": "o que fazer, curto e no infinitivo, como quem pediu falaria"},
-             "prazo": {"type": ["string", "null"], "description": "AAAA-MM-DD ou AAAA-MM-DDTHH:MM; null = sem prazo (já cobra)"}},
+             "prazo": {"type": ["string", "null"], "description": "AAAA-MM-DD ou AAAA-MM-DDTHH:MM; null = sem prazo (já cobra)"},
+             "cliente": cliente_id(cs, "id do cliente, se a tarefa é de um cliente; null = da equipe", true),
+             "projeto": {"type": ["string", "null"], "description": "id do projeto do cliente (da lista), se foi dito"}},
           "required": ["para", "texto"]}},
         {"name": "recado", "description": "Manda um recado pra um ou mais membros, na hora ou agendado. Não cria tarefa.",
          "input_schema": {"type": "object", "properties": {
@@ -171,7 +178,7 @@ pub fn ferramentas(membros: &[Membro], cs: &Clientes) -> Value {
              "fazenda": {"type": ["string", "null"], "description": "nome de uma fazenda do cliente"},
              "encerrar": {"type": ["boolean", "null"], "description": "true = encerra o projeto"}},
           "required": ["cliente", "nome"]}},
-        {"name": "ver_cliente", "description": "A ficha do cliente, já no formato de mandar: fazendas, desde quando, flexibilidade, estilo, contatos, projetos e os detalhes mais novos.",
+        {"name": "ver_cliente", "description": "A ficha do cliente, já no formato de mandar: fazendas, desde quando, flexibilidade, estilo, contatos, projetos, tarefas abertas e os detalhes mais novos.",
          "input_schema": {"type": "object", "properties": {"id": cliente}, "required": ["id"]}},
     ])
 }
@@ -184,8 +191,19 @@ fn marca_cache(m: Option<&mut Value>) {
     }
 }
 
-/// "#3 mandar a proposta (pediu: Fulana · até sex 13/11 09:00 · 2 cobranças sem resposta)"
-pub fn linha_tarefa(t: &Tarefa, nome: impl Fn(&str) -> String, eu: &str) -> String {
+/// "João Pereira / Pivô central" (o id, se o cliente ou o projeto sumiu do cadastro)
+pub fn nome_cliente(t: &Tarefa, cs: &Clientes) -> Option<String> {
+    let id = estado::cliente(t)?;
+    let c = cs.achar(id);
+    let mut s = c.map(|c| c.nome.clone()).unwrap_or_else(|| id.to_string());
+    if let Some(p) = estado::projeto(t) {
+        s += &format!(" / {}", c.and_then(|c| c.projetos.iter().find(|x| x.id == p)).map(|x| x.nome.as_str()).unwrap_or(p));
+    }
+    Some(s)
+}
+
+/// "#3 mandar a proposta (pediu: Fulana · cliente: João Pereira / Pivô · até sex 13/11 09:00 · 2 cobranças sem resposta)"
+pub fn linha_tarefa(t: &Tarefa, nome: impl Fn(&str) -> String, eu: &str, cs: &Clientes) -> String {
     let mut notas = vec![];
     if !estado::pessoal(t) {
         if estado::de(t) != eu {
@@ -199,6 +217,9 @@ pub fn linha_tarefa(t: &Tarefa, nome: impl Fn(&str) -> String, eu: &str) -> Stri
     }
     if estado::do_chefe(t) {
         notas.push("⭐ pedido do chefe".into());
+    }
+    if let Some(c) = nome_cliente(t, cs) {
+        notas.push(format!("cliente: {c}"));
     }
     if let Some(p) = estado::prazo(t) {
         notas.push(format!("até {}", fmt_when(&argos::util::iso(&p)).unwrap_or_default()));
@@ -216,7 +237,7 @@ impl Atendente {
         let now = argos::util::agora();
         let eq = trava(&self.equipe);
         let nome = |s: &str| eq.primeiro_nome(s);
-        let lista = |f: Filtro| estado::visiveis(&eq.estado, &self.slug, &f).iter().map(|t| linha_tarefa(t, nome, &self.slug)).collect::<Vec<_>>();
+        let lista = |f: Filtro| estado::visiveis(&eq.estado, &self.slug, &f).iter().map(|t| linha_tarefa(t, nome, &self.slug, &eq.clientes)).collect::<Vec<_>>();
         let (minhas, pedi) = (lista(Filtro::Minhas), lista(Filtro::Pedi));
         let quem = eq.membro(&self.slug).map(|m| m.nome.clone()).unwrap_or_else(|| self.slug.clone());
         let mut ctx = format!("{}\n[falando com: {quem} (`{}`)]", carimbo(&now), self.slug);

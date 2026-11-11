@@ -1002,3 +1002,47 @@ fn projeto_do_cliente_cita_fazenda_dele_e_encerra() {
     a.ferramenta("projeto_cliente", &novo("Silagem", Value::Null)).unwrap();
     assert!(trava(&r.equipe).clientes.clientes[0].projetos[1].encerrado.is_none());
 }
+
+#[test]
+fn tarefa_ligada_a_cliente_e_projeto() {
+    let (tmp, mut r, rx, crx) = time_de_teste(vec![
+        usa("t1", "delegar", json!({"para": "beltrano", "texto": "mandar o orçamento", "projeto": "pivo-central"})),
+        diz("Mandei pro Beltrano."),
+    ]);
+    let mut a = atendente_de(&r, "fulana-souza", 100);
+    a.ferramenta("salvar_cliente", &json!({"nome": "João Pereira", "fazendas_add": [{"nome": "Boa Vista"}]})).unwrap();
+    a.ferramenta("salvar_cliente", &json!({"nome": "Maria Lima"})).unwrap();
+    a.ferramenta("projeto_cliente", &json!({"cliente": "joao-pereira", "nome": "Pivô central", "fazenda": "Boa Vista"})).unwrap();
+
+    // projeto sem cliente: só o João tem, então é dele
+    r.despacha(&msg(100, "private", "pede pro Beltrano mandar o orçamento do pivô")).unwrap();
+    espera(&rx, enviado_a(200, "📌 <b>Fulana</b> te pediu: mandar o orçamento\n🌾 João Pereira / Pivô central"));
+    espera(&rx, enviado_a(100, "Mandei pro Beltrano."));
+    let p1 = crx.recv().unwrap();
+    let delegar = p1["tools"].as_array().unwrap().iter().find(|t| t["name"] == "delegar").unwrap();
+    assert_eq!(delegar["input_schema"]["properties"]["cliente"]["enum"], json!(["joao-pereira", "maria-lima", null]));
+    crx.recv().unwrap();
+    let t = estado_de(&tmp.0).tarefas.remove(0);
+    assert_eq!((estado::cliente(&t), estado::projeto(&t)), (Some("joao-pereira"), Some("pivo-central")));
+
+    // conferido contra o cadastro
+    let mut pede = |c: Value, p: Value| a.ferramenta("delegar", &json!({"para": "eu", "texto": "x", "cliente": c, "projeto": p}));
+    assert!(pede(json!("ninguem"), Value::Null).unwrap_err().to_string().contains("não existe"));
+    assert!(pede(json!("maria-lima"), json!("pivo-central")).unwrap_err().to_string().contains("não tem projeto ativo"));
+    assert!(pede(Value::Null, json!("silagem")).unwrap_err().to_string().contains("nenhum cliente"));
+    pede(json!("maria-lima"), Value::Null).unwrap();
+    let mut b = atendente_de(&r, "beltrano", 200);
+    b.ferramenta("delegar", &json!({"para": "eu", "texto": "ligar pra Maria", "cliente": "maria-lima"})).unwrap();
+
+    // filtro, linha e ficha
+    assert_eq!(a.ferramenta("ver_tarefas", &json!({"filtro": "cliente:joao-pereira"})).unwrap(), "#1 mandar o orçamento (faz: Beltrano · cliente: João Pereira / Pivô central)");
+    assert_eq!(a.ferramenta("ver_tarefas", &json!({"filtro": "cliente:maria-lima"})).unwrap(), "#2 x (lembrete pessoal · cliente: Maria Lima)", "o lembrete do Beltrano não aparece");
+    assert!(a.ferramenta("ver_tarefas", &json!({"filtro": "cliente:ninguem"})).is_err());
+    let ficha = a.ferramenta("ver_cliente", &json!({"id": "joao-pereira"})).unwrap();
+    assert!(ficha.ends_with("<b>Projetos</b>\n• Pivô central (Boa Vista)\n\n<b>Tarefas abertas</b>\n• #1 mandar o orçamento · faz Beltrano · Pivô central"), "{ficha}");
+
+    // fechada, vai pro histórico com o cliente
+    b.ferramenta("concluir", &json!({"id": 1})).unwrap();
+    let h = std::fs::read_to_string(estado::historico(&tmp.0)).unwrap();
+    assert!(h.contains(r#""cliente":"joao-pereira""#) && h.contains(r#""projeto":"pivo-central""#), "{h}");
+}

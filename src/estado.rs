@@ -124,6 +124,24 @@ pub fn para(t: &Tarefa) -> &str {
     campo(t, "para")
 }
 
+/// id do cliente ligado; None = tarefa da equipe
+pub fn cliente(t: &Tarefa) -> Option<&str> {
+    Some(campo(t, "cliente")).filter(|s| !s.is_empty())
+}
+
+/// id do projeto (dentro do cliente) ligado
+pub fn projeto(t: &Tarefa) -> Option<&str> {
+    Some(campo(t, "projeto")).filter(|s| !s.is_empty())
+}
+
+/// liga a tarefa a um cliente e, se vier, a um projeto dele
+pub fn liga(t: &mut Tarefa, cliente: &str, projeto: Option<&str>) {
+    t.resto.insert("cliente".into(), json!(cliente));
+    if let Some(p) = projeto {
+        t.resto.insert("projeto".into(), json!(p));
+    }
+}
+
 /// lembrete pessoal: só o dono vê, e ninguém recebe aviso de volta
 pub fn pessoal(t: &Tarefa) -> bool {
     de(t) == para(t)
@@ -213,6 +231,8 @@ pub enum Filtro {
     Equipe,
     /// as que este membro faz (lembrete pessoal dele só se for eu)
     De(String),
+    /// as ligadas a este cliente
+    Cliente(String),
 }
 
 impl Filtro {
@@ -221,9 +241,10 @@ impl Filtro {
             "minhas" | "" => Filtro::Minhas,
             "pedi" => Filtro::Pedi,
             "equipe" => Filtro::Equipe,
-            o => match o.strip_prefix("de:") {
-                Some(slug) if !slug.trim().is_empty() => Filtro::De(slug.trim().to_string()),
-                _ => return Err(Erro::Valor(format!("filtro {o:?}: use minhas, pedi, equipe ou de:<membro>"))),
+            o => match (o.strip_prefix("de:"), o.strip_prefix("cliente:")) {
+                (Some(slug), _) if !slug.trim().is_empty() => Filtro::De(slug.trim().to_string()),
+                (_, Some(id)) if !id.trim().is_empty() => Filtro::Cliente(id.trim().to_string()),
+                _ => return Err(Erro::Valor(format!("filtro {o:?}: use minhas, pedi, equipe, de:<membro> ou cliente:<id>"))),
             },
         })
     }
@@ -239,6 +260,7 @@ pub fn visiveis<'a>(e: &'a Estado, eu: &str, f: &Filtro) -> Vec<&'a Tarefa> {
             Filtro::Pedi => de(t) == eu && !pessoal(t),
             Filtro::Equipe => true,
             Filtro::De(s) => para(t) == s,
+            Filtro::Cliente(c) => cliente(t) == Some(c.as_str()),
         })
         .collect()
 }
